@@ -1,0 +1,19 @@
+# build output
+build/
+*.apk
+*.idsig
+# secrets / personal
+token.txt
+discord_setup.py
+.claude/
+# gameplay recordings and screenshots (private)
+run_recording/
+test/fixtures/
+test/recordings/
+test/report/
+test/buff_truth.txt
+AI_VISION_TEST_REPORT.md
+# Bee Swarm Simulator game art (c) Onett, fetched from the wiki: not redistributed
+catalog/src/
+assets/catalog.bin
+assets/thumbs/

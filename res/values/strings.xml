@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="a11y_desc">Silly Macro uses this only to press Roblox\'s on-screen thumbstick, jump and camera (W/A/S/D as touches) while you run the Pine Tree Forest macro, and to show its floating control panel. It does not read your screen content through accessibility.</string>
+</resources>

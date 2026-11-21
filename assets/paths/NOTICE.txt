@@ -1,0 +1,2 @@
+These walking routes are from Natro Macro (https://github.com/NatroTeam/NatroMacro), paths/gtf-*.ahk and wf-*.ahk,
+licensed under the GNU General Public License v3.0. Unmodified; Bee Macro reads the walk branch with Routes.java.

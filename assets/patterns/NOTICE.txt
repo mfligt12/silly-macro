@@ -1,0 +1,2 @@
+These gather patterns are from Natro Macro (https://github.com/NatroTeam/NatroMacro), patterns/*.ahk,
+licensed under the GNU General Public License v3.0. Unmodified; Bee Macro reads them with Patterns.java.
