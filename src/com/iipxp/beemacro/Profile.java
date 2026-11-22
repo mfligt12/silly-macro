@@ -113,7 +113,8 @@ public final class Profile {
     public String hiddenCats = "";            // comma list of Detector.Cat names not drawn
     // AI decisions (all go through MacroService's one input lock)
     public boolean hasteAdjustSkillet = false; // Skillet walks covered by distance at the live Haste speed
-    public boolean hastePatterns = true;       // Natro patterns: same, so Haste never stretches the pattern (Natro Walk() does this too)
+    public boolean hastePatterns = true;
+    public boolean hastyGuard = false, giftedHasty = false;   // permanent speed boosts (Natro settings): only used to weigh Coconut Haste / Bear Morph       // Natro patterns: same, so Haste never stretches the pattern (Natro Walk() does this too)
     public boolean collectTokens = false;     // off until you have labelled tokens and checked the boxes
     public int prioBoost = 3, prioToken = 2, prioLoot = 2, prioMark = 1;   // 0 = never collect
     public int maxCollectMs = 1500;           // walking budget per token (base-speed ms, ≈12 tiles)

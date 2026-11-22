@@ -21,7 +21,8 @@ public final class Vision {
         public Field field = Field.UNKNOWN;               // flowers under the player
         public boolean haste;                             // Haste buff active (walk speed above base)
         public int hasteStacks;                           // 0 none, 1..10 stacks read from the icon, -1 Haste on but count unreadable
-        public int hasteSlot = -1; public double hasteConf; // buff-row slot of the Haste icon; share of its shape mask that matched
+        public int hasteSlot = -1; public double hasteConf;
+        public boolean coconutHaste;                      // a 2nd Haste icon on the row = Coconut Haste (same icon, Natro counts them) // buff-row slot of the Haste icon; share of its shape mask that matched
         public int w, h;
         public String summary() {
             return String.format(java.util.Locale.US, "%s(%.0f%%) pollen=%s(%.0f%%) prompt=%s(%.0f%%)",
@@ -97,7 +98,7 @@ public final class Vision {
         else if (hud >= 0.75) { res.screen = Screen.GAME; res.screenConf = hud; }
         else { res.screen = Screen.UNKNOWN; res.screenConf = 1 - hud; }
 
-        if (res.screen == Screen.GAME) { pollen(px, w, h, res); prompt(px, w, h, res); res.shiftLock = shiftLock(px, w, h); res.field = field(px, w, h); double[] hm = hasteMatch(px, w, h); int hs = (int) hm[0]; res.hasteSlot = hs; res.hasteConf = hm[1]; res.haste = hs >= 0; res.hasteStacks = hs < 0 ? 0 : hasteStacks(px, w, h, hs); }
+        if (res.screen == Screen.GAME) { pollen(px, w, h, res); prompt(px, w, h, res); res.shiftLock = shiftLock(px, w, h); res.field = field(px, w, h); double[] hm = hasteMatch(px, w, h); int hs = (int) hm[0]; res.hasteSlot = hs; res.hasteConf = hm[1]; res.haste = hs >= 0; res.coconutHaste = hm[2] >= 2; res.hasteStacks = hs < 0 ? 0 : hasteStacks(px, w, h, hs); }
         return res;
     }
 
@@ -312,9 +313,10 @@ public final class Vision {
         "...........................",
     };
     public static int hasteSlot(int[] px, int w, int h) { return (int) hasteMatch(px, w, h)[0]; }
-    /** {slot or -1, share of the running-figure mask that matched (the detection score)}. */
+    /** {first slot or -1, its share of the running-figure mask that matched (the detection score), number of Haste icons}. */
     public static double[] hasteMatch(int[] px, int w, int h) {
         double sx = w / 2340.0, sy = h / 1080.0;
+        double[] first = null; int n = 0;
         for (int k = 0; 100 + 60 * k + 58 < 2340; k++) {
             int x0 = 100 + 60 * k, inMask = 0, inHit = 0, out = 0, outHit = 0;
             for (int r = 0; r < HASTE_MASK.length; r++) for (int c = 0; c < HASTE_MASK[r].length(); c++) {
@@ -325,9 +327,9 @@ public final class Vision {
                 if (HASTE_MASK[r].charAt(c) == '#') { inMask++; if (gray) inHit++; } else { out++; if (gray) outHit++; }
             }
             if (inMask > 0 && inHit >= (k < 12 ? 0.4 : 0.6) * inMask && outHit <= 0.25 * out)   // tablet icons are rescaled: true slot 0.44-0.51, others ≤ 0.02; far slots (scenery behind) need more
-                return new double[]{k, inHit / (double) inMask};
+            { n++; if (first == null) first = new double[]{k, inHit / (double) inMask}; }
         }
-        return new double[]{-1, 0};
+        return first == null ? new double[]{-1, 0, 0} : new double[]{first[0], first[1], n};
     }
 
     /** Roblox mobile shift-lock button ring (centre ≈ (147,700) on 2340x1080): blue when on, light gray when off.

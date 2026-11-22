@@ -230,6 +230,23 @@ public class SelfTest {
         tr.update(new java.util.ArrayList<>(), 1000, (x, y) -> Math.abs(x - 590) < 50);
         check(tr.tracks.isEmpty() && tr.history.peek().how.equals("vanished at the player") && tr.history.peek().label.equals("Honey Token"),
               "box removed after grace; history: vanished at the player (counted as collected only if we also reached it)");
+        // Natro DetectMovespeed formula: the flat bonuses are relative to the base before Hasty Guard / Gifted Hasty
+        check(Math.abs(Moves.speedFactor(33.35, false, false, 1, false, false, false, false, false) - 1) < 1e-9
+                && Math.abs(Moves.speedFactor(33.35, false, false, 1.5, false, false, false, false, false) - 1.5) < 1e-9
+                && Math.abs(Moves.speedFactor(30, false, false, 1, true, false, false, false, false) - 40 / 30.0) < 1e-9
+                && Math.abs(Moves.speedFactor(30 * 1.1 * 1.15, true, true, 1, false, true, false, false, false) - 34 / 30.0) < 1e-9
+                && Math.abs(Moves.speedFactor(30, false, false, 1.2, false, false, true, true, true) - 1.2 * 2 * 1.2 * 1.25) < 1e-9,
+                "speed factor: Haste, Coconut +10, Bear +4 before Hasty Guard/Gifted, Haste+ ×2, Oil ×1.2, Smoothie ×1.25");
+        {   // no screenshot here has Coconut Haste: a 2nd Haste icon must never be seen on any of them
+            int coco = 0, n = 0; StringBuilder which = new StringBuilder();
+            for (File f : new File("test/fixtures").listFiles()) {
+                if (!f.getName().endsWith(".png")) continue;
+                n++;
+                Vision.Result r = f.getName().startsWith("tab_") ? tab(f.getName()) : see(f.getName());
+                if (r.coconutHaste) { coco++; which.append(f.getName()).append(' '); }
+            }
+            check(coco == 0, "Coconut Haste not seen on any of " + n + " screenshots without it " + which);
+        }
         Vision.Result hv = see("haste_x5.png");
         check(hv.haste && hv.hasteSlot >= 0 && hv.hasteConf >= 0.6 && hv.hasteConf <= 1, "Haste box has a real match score (" + String.format("%.2f", hv.hasteConf) + ") and slot " + hv.hasteSlot);
 

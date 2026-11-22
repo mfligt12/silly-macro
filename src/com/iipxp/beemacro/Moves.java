@@ -71,6 +71,15 @@ public final class Moves {
     static Key[] flip(Key[] ks) { if (ks == null) return null; Key[] o = new Key[ks.length]; for (int i = 0; i < ks.length; i++) o[i] = flip(ks[i]); return o; }
 
     /** Natro legacy walk: HyperSleep(4000/MoveSpeedNum*tiles). 4 studs per tile. */
+    /** Walk speed as a multiple of your movespeed stat, Natro DetectMovespeed (lib/Walk.ahk, GPL-3.0):
+     *  (base + 10 Coconut Haste + 4 Bear Morph) × Hasty Guard 1.1 × Gifted Hasty 1.15 × hasteMul (1 + 0.1/stack)
+     *  × Haste+ 2 × Oil 1.2 × Super Smoothie 1.25. moveSpeed already includes Hasty Guard / Gifted Hasty, so the flat
+     *  bonuses are compared with the base before those. */
+    public static double speedFactor(double moveSpeed, boolean hastyGuard, boolean giftedHasty, double hasteMul,
+                                     boolean coconut, boolean bear, boolean hastePlus, boolean oil, boolean smoothie) {
+        double base = moveSpeed / (hastyGuard ? 1.1 : 1) / (giftedHasty ? 1.15 : 1);
+        return (base + (coconut ? 10 : 0) + (bear ? 4 : 0)) / base * hasteMul * (hastePlus ? 2 : 1) * (oil ? 1.2 : 1) * (smoothie ? 1.25 : 1);
+    }
     public static long tileMs(double tiles, double moveSpeed) { return Math.round(4000.0 / moveSpeed * tiles); }
 
     private final List<Step> out = new ArrayList<>();

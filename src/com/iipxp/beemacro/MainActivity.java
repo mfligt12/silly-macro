@@ -418,6 +418,9 @@ public class MainActivity extends Activity {
         bs.addView(stepper("Buff-row threshold", () -> String.format(Locale.US, "%.2f", p.buffMinConf), d -> p.buffMinConf = Math.max(0.5, Math.min(0.99, Math.round((p.buffMinConf + d * 0.05) * 100) / 100.0))));
         bs.addView(toggle("Haste correction for patterns (keeps their size)", p.hastePatterns, on -> p.hastePatterns = on));
         bs.addView(toggle("Haste correction for Skillet too", p.hasteAdjustSkillet, on -> p.hasteAdjustSkillet = on));
+        bs.addView(tv("Also counted: Coconut Haste (+10), Bear Morph (+4), Oil ×1.2, Super Smoothie ×1.25. Tell it which permanent boosts you have:", 12, DIM));
+        bs.addView(toggle("I wear the Hasty Guard", p.hastyGuard, on -> p.hastyGuard = on));
+        bs.addView(toggle("I have a Gifted Hasty Bee", p.giftedHasty, on -> p.giftedHasty = on));
     }
 
     // ------------------------------------------------------------------ Sequences: field, pattern, sprinkler

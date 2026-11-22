@@ -733,20 +733,35 @@ final class Engine implements Runnable {
     private double speedNow(double prev) {
         Vision.Result r = Monitor.last;
         if (r == null || !sure(r)) return prev;
-        double v = !r.haste ? 1.0 : r.hasteStacks > 0 ? 1 + 0.1 * Math.min(10, r.hasteStacks) : -1;
-        if (r.haste && v > 0 && v < prev) v = prev;   // stacks don't fall while Haste stays on: a lower number is a misread
+        double h = !r.haste ? 1.0 : r.hasteStacks > 0 ? 1 + 0.1 * Math.min(10, r.hasteStacks) : -1;
+        if (r.haste && h > 0 && h < hasteMul) h = hasteMul;   // stacks don't fall while Haste stays on: a lower number is a misread
+        double v = h < 0 ? -1 : Math.round(speedFactor(r, h) * 1000) / 1000.0;
         // A new speed must be read on 2 different frames in a row (live: 1-stack Haste flickered x1.0/x1.1 every
         // ~0.3 s, which skews a 35 s distance-based walk by several tiles).
         long t = Monitor.lastTime;
         if (v != prev) {
-            if (v == candSpeed && t != candTime) { candSpeed = Double.NaN; return v; }
+            if (v == candSpeed && t != candTime) { candSpeed = Double.NaN; if (h > 0) hasteMul = h; return v; }
             if (v != candSpeed) { candSpeed = v; candTime = t; }
             return prev;
         }
-        candSpeed = Double.NaN;
+        candSpeed = Double.NaN; if (h > 0) hasteMul = h;
         return prev;
     }
-    private double candSpeed = Double.NaN; private long candTime;
+    private double candSpeed = Double.NaN, hasteMul = 1; private long candTime;
+    /** Live speed multiple: Haste stacks plus Coconut Haste, Bear Morph, Oil and Super Smoothie (Natro's formula, Moves.speedFactor). */
+    private double speedFactor(Vision.Result r, double hasteMul) {
+        boolean bear = false, oil = false, smoothie = false;
+        for (Buffs.Effect e : Monitor.activeBuffs()) { bear |= e.name.equals("Bear Morph"); oil |= e.name.equals("Oil"); smoothie |= e.name.equals("Super Smoothie"); }
+        return Moves.speedFactor(p.moveSpeed, p.hastyGuard, p.giftedHasty, hasteMul, r.coconutHaste, bear, false, oil, smoothie);
+    }
+    /** Which speed buffs are counted right now, for the log. */
+    private String speedWhy() {
+        Vision.Result r = Monitor.last; StringBuilder b = new StringBuilder();
+        if (hasteMul > 1) b.append("Haste x").append(Math.round((hasteMul - 1) * 10)).append(" ");
+        if (r != null && r.coconutHaste) b.append("Coconut Haste ");
+        for (Buffs.Effect e : Monitor.activeBuffs()) if (e.name.equals("Bear Morph") || e.name.equals("Oil") || e.name.equals("Super Smoothie")) b.append(e.name).append(" ");
+        return b.length() == 0 ? "base speed" : b.toString().trim();
+    }
 
     /** The hive→field route was recorded at base speed. Over ~35 s of walking (~290 tiles) a 3% speed error is ~9
      *  tiles, i.e. the wrong field, so leave only once Haste (20 s max) has worn off. */
@@ -808,8 +823,8 @@ final class Engine implements Runnable {
                     }
                     double nv = speedNow(cur[0]);
                     if (nv < 0) { if (unreadSince[0] == 0) unreadSince[0] = now; else if (now - unreadSince[0] > 1000) { lost[0] = true; return true; } }
-                    else { unreadSince[0] = 0; if (nv != cur[0]) { Log.add(String.format(Locale.US, "haste: speed x%.1f → x%.1f mid-walk", cur[0], nv)); cur[0] = nv; } }
-                    step = String.format(Locale.US, "Walking %s at x%.1f speed (Haste) · %.1f tiles left", Moves.Step.k(s.keys), cur[0], left[0] / Moves.tileMs(1, p.moveSpeed));
+                    else { unreadSince[0] = 0; if (nv != cur[0]) { Log.add(String.format(Locale.US, "speed: x%.2f → x%.2f mid-walk (%s)", cur[0], nv, speedWhy())); cur[0] = nv; } }
+                    step = String.format(Locale.US, "Walking %s at x%.2f speed · %.1f tiles left", Moves.Step.k(s.keys), cur[0], left[0] / Moves.tileMs(1, p.moveSpeed));
                     return left[0] <= 150 * cur[0];             // next 150 ms would overshoot: finish with a short press
                 });
                 if (lag[0]) {
