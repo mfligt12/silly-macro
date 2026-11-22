@@ -456,7 +456,7 @@ public class MainActivity extends Activity {
         d.addView(stepper("Drift tolerance (sensitivity)", () -> Math.round(p.driftTolerance * 100) + "% of screen", x -> p.driftTolerance = Math.max(0.04f, Math.min(0.3f, Math.round((p.driftTolerance + x * 0.02f) * 100) / 100f))));
         d.addView(stepper("Max correction walk", () -> p.maxCorrectMs + " ms", x -> p.maxCorrectMs = clamp(p.maxCorrectMs + x * 200, 200, 3000)));
         LinearLayout m = card("Movement & camera");
-        String[] modes = {"", "keyboard", "touch"}, modeNames = {"Auto (tablets: keyboard + mouse)", "Keyboard + mouse emulator", "Touch gestures"};
+        String[] modes = {"", "keyboard", "touch"}, modeNames = {"Auto (keyboard + mouse when the key sender runs)", "Keyboard + mouse emulator", "Touch gestures"};
         Button im = button("Input: " + modeNames[java.util.Arrays.asList(modes).indexOf(p.inputMode) < 0 ? 0 : java.util.Arrays.asList(modes).indexOf(p.inputMode)], 0, null);
         im.setOnClickListener(v -> { int i = (Math.max(0, java.util.Arrays.asList(modes).indexOf(p.inputMode)) + 1) % modes.length; p.inputMode = modes[i]; App.save(this); im.setText("Input: " + modeNames[i]); refresh(); });
         m.addView(im);
@@ -670,7 +670,12 @@ public class MainActivity extends Activity {
             String emu = Keys.emulator;
             line(s, emu != null && !emu.startsWith("none"), "Input: keyboard + mouse emulator — " + (emu == null ? "key sender not reached yet" : emu.startsWith("none") ? "NOT available (" + emu + ")" : "ready (" + emu + ")"));
             if (SystemClock.uptimeMillis() - emuAsked > 5000) { emuAsked = SystemClock.uptimeMillis(); new Thread(() -> { if (Keys.connect(this)) Keys.emulatorState(); }, "emu-state").start(); }
-        } else line(s, input, "Input method: Accessibility gestures on Roblox's touch controls");
+        } else line(s, input, "Input method: Accessibility gestures on Roblox's touch controls"
+                + (p.inputMode.isEmpty() ? " (the tool won't swing: start the key sender with Shizuku, Settings tab, for keyboard + mouse)" : ""));
+        if (p.inputMode.isEmpty() && !p.device.equals("tablet") && SystemClock.uptimeMillis() - emuAsked > 5000) {   // Auto on a phone: switch to keyboard + mouse once the key sender works
+            emuAsked = SystemClock.uptimeMillis();
+            new Thread(() -> { boolean ok = Keys.connect(this, false) && Keys.ping(); String emu = ok ? Keys.emulatorState() : null; Profile.keySender = ok && !String.valueOf(emu).startsWith("none"); }, "emu-state").start();
+        }
         line(s, cap, "Screen capture (MediaProjection)");
         line(s, p.hiveConfirmed, "Hive slot " + p.hiveSlot + (p.hiveConfirmed ? " confirmed" : " — confirm it once (Hive tab)"));
         line(s, input && MacroService.inst.overlayShown(), "Floating overlay with emergency stop");

@@ -307,6 +307,15 @@ public final class Remap {
         return new int[]{(int) (r[0] * o.worldScale + o.worldX0), (int) (r[1] * o.worldScale), (int) (r[2] * o.worldScale + o.worldX0), (int) (r[3] * o.worldScale)};
     }
 
+    /** Hotbar slot 1-7 as a tap point (fractions of the screen): bottom-centre anchored, slot 1 at (770, 935) on the
+     *  S23 and 135 px apart (recorded); other phones move it by their measured layout. */
+    public static float[] hotbar(int slot, int w, int h) {
+        double x = 770 + 135 * (Math.max(1, Math.min(7, slot)) - 1), y = 935;
+        Phone ph = phoneCal;
+        if (!tablet(w, h) && ph != null && !ph.s23(w, h)) return new float[]{(float) (ph.cxX(x) / w), (float) ((h - (H - y) * ph.k) / h)};
+        return new float[]{(float) (x / W), (float) (y / H)};   // ponytail: tablets in touch mode use the S23 spot; measure a tablet hotbar if anyone runs touch there
+    }
+
     /** Where to tap (fractions of the real screen) on each layout. */
     public static final class Taps { public float menuX, menuY, respawnX, respawnY, peopleX, peopleY, confirmX, confirmY, promptX, promptY; }
     public static Taps taps(int w, int h) {

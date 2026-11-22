@@ -88,7 +88,10 @@ public final class Profile {
     public int fieldMargin = 5;          // start steering back when a field edge is this many map cells away
     public boolean showFieldMap = false; // draw the detected field edges on screen (debugging)
     public float toolX = 0.50f, toolY = 0.45f;          // where the held "click" lands (open world, no UI)
-    public boolean keyboard() { return inputMode.equals("keyboard") || (inputMode.isEmpty() && device.equals("tablet")); }
+    /** Auto: keyboard + mouse on tablets, and on phones too once the key sender answers with a working emulator (only
+     *  it can swing the tool and press the sprinkler key; phones on Auto were stuck on touch, where neither happened). */
+    public boolean keyboard() { return inputMode.equals("keyboard") || (inputMode.isEmpty() && (device.equals("tablet") || keySender)); }
+    public static volatile boolean keySender;
 
     /** Touch-layout defaults measured on the Galaxy Tab S9 FE (2304×1440) on 2026-11-17: Roblox shows a
      *  thumbstick (not the D-pad) there, centre (212,1178), ring radius ~100 px; jump (2112,1178). Player
