@@ -374,22 +374,45 @@ final class Engine implements Runnable {
         double[] t = Routes.sprinklerTiles(p.field, p.sprinklerDist);
         Moves.Key fb = loc.contains("Upper") ? Moves.Key.W : loc.contains("Lower") ? Moves.Key.S : null;
         Moves.Key lr = loc.contains("Left") ? Moves.Key.A : loc.contains("Right") ? Moves.Key.D : null;
+        // Pine Tree's upper corners are under the leaves: the field map reads the shade as the edge and stopped this walk
+        // halfway (5 of 7.9 tiles), so Skillet never started in its corner. There the hedges are the limit instead.
+        boolean shadeLies = p.field.equals("pinetree");
         for (Moves.Key k : new Moves.Key[]{fb, lr}) {
             if (k == null) continue;
-            double tiles = k == fb ? t[0] : t[1], done = 0;
-            while (done < tiles - 0.05) {
-                checkpoint();
-                FieldMap.Read r = Monitor.fieldRead;
-                if (fieldOn() && r != null && r.state == FieldMap.State.INSIDE) {
-                    int edge = k == Moves.Key.W ? r.up : k == Moves.Key.S ? r.down : k == Moves.Key.A ? r.left : r.right;
-                    if (edge <= p.fieldMargin) { Log.add(String.format(Locale.US, "sprinkler: field edge close, stopped walking %s after %.1f of %.1f tiles", k, done, tiles)); break; }
-                }
-                double step = Math.min(1, tiles - done);
-                in.hold(MacroService.set(new Moves.Key[]{k}), Moves.tileMs(step, p.moveSpeed));
-                done += step;
-                sleep(120);   // a fresh field map for the next check
-            }
+            double tiles = k == fb ? t[0] : t[1];
+            double[] w = walkUntilWall(k, tiles, !shadeLies);
+            Log.add(String.format(Locale.US, "sprinkler: walked %s %.1f of %.1f tiles%s", k, w[0], tiles, w[1] == 1 ? " (stopped at the hedge)" : w[1] == 2 ? " (field edge close)" : ""));
         }
+    }
+
+    /** Walk one key a distance (Haste-corrected, like the patterns) but stop at a wall (the world stops moving) or, if
+     *  asked, where the field map shows the edge close. Returns {tiles walked, 0 done / 1 wall / 2 edge}. Never jumps. */
+    private double[] walkUntilWall(Moves.Key k, double tiles, boolean edgeStop) {
+        final double total = Moves.tileMs(tiles, p.moveSpeed);
+        final double[] left = {total}, cur = {liveSpeed}; final long t0 = SystemClock.uptimeMillis(); final long[] last = {t0}, still = {0};
+        final int[] why = {0};
+        in.holdUntil(MacroService.set(new Moves.Key[]{k}), (long) (total / Math.max(0.5, cur[0])) + 4000, () -> {
+            long now = SystemClock.uptimeMillis();
+            left[0] -= (now - last[0]) * cur[0]; last[0] = now;
+            double nv = speedNow(cur[0]); if (nv > 0) cur[0] = nv;
+            if (left[0] <= 150 * cur[0]) return true;
+            if (now - t0 > 700 && now - Monitor.motionTime < 1500) {
+                if (Monitor.motion >= STILL) still[0] = 0;
+                else { if (still[0] == 0) still[0] = now; if (now - still[0] > 450) { why[0] = 1; return true; } }
+            }
+            if (edgeStop && fieldOn()) {
+                FieldMap.Read r = Monitor.fieldRead;
+                if (r != null && r.state == FieldMap.State.INSIDE) {
+                    int edge = k == Moves.Key.W ? r.up : k == Moves.Key.S ? r.down : k == Moves.Key.A ? r.left : r.right;
+                    if (edge <= p.fieldMargin) { why[0] = 2; return true; }
+                }
+            }
+            return false;
+        });
+        if (why[0] == 0 && left[0] > 20) { in.hold(MacroService.set(new Moves.Key[]{k}), Math.round(left[0] / cur[0])); left[0] = 0; }
+        liveSpeed = cur[0];
+        checkpoint();
+        return new double[]{Math.max(0, total - Math.max(0, left[0])) / Moves.tileMs(1, p.moveSpeed), why[0]};
     }
 
     private long lastMondo = -1_000_000_000L;
@@ -404,7 +427,8 @@ final class Engine implements Runnable {
     /** Natro nm_findHiveSlot: if our hive prompt isn't up, walk Left up to 15 s until it is; confirm 0.5 s later and
      *  step back Right 1.5 tiles if overrun (≤10 times). */
     private void natroFindHive() {
-        java.util.function.BooleanSupplier at = () -> { Vision.Result r = Monitor.last; return r != null && SystemClock.uptimeMillis() - Monitor.lastTime < 800 && ownHive(r); };
+        // a frame older than 0.4 s doesn't count: at walking speed that is 3 tiles of hive row ago
+        java.util.function.BooleanSupplier at = () -> { Vision.Result r = Monitor.last; return r != null && SystemClock.uptimeMillis() - Monitor.lastTime < 400 && ownHive(r); };
         Vision.Result now = waitFor(this::sure, 2000);
         if (now == null || !ownHive(now)) {
             boolean found = in.holdUntil(MacroService.set(new Moves.Key[]{Moves.Key.A}), 15_000, at);
@@ -416,12 +440,28 @@ final class Engine implements Runnable {
             }
             if (!found) throw new Recover("own hive not found along the hive row");
         }
-        for (int i = 0; i < 10; i++) {
-            sleep(500);
-            if (at.getAsBoolean()) { Log.add("hive: found own pad"); return; }
-            in.hold(MacroService.set(new Moves.Key[]{Moves.Key.D}), Moves.tileMs(1.5, p.moveSpeed));
+        if (padHere()) { Log.add("hive: found own pad"); return; }
+        // Slid past the pad before the key came up (screen frames arrive ~8 a second, so the stop is late; with Haste
+        // later still). Natro steps back 1.5 tiles at a time, which here jumped over the pad both ways until it gave
+        // up. Sweep back in short Haste-corrected steps instead, checking a fresh frame after each, then the other way.
+        double moved = 0;
+        for (Moves.Key k : new Moves.Key[]{Moves.Key.D, Moves.Key.A}) {
+            double reach = k == Moves.Key.D ? 5 : 10;
+            for (double d = 0; d < reach; d += 0.6) {
+                walkHold(new Moves.Step('H', new Moves.Key[]{k}, 1.0, (int) Moves.tileMs(0.6, p.moveSpeed), null));
+                moved += 0.6;
+                if (padHere()) { Log.add(String.format(Locale.US, "hive: found own pad after sweeping %s %.1f tiles", k, d + 0.6)); return; }
+            }
         }
         throw new Recover("own hive pad overrun");
+    }
+    /** Standing on our pad: the prompt on a frame taken after we stopped (two tries, frames arrive ~8 a second). */
+    private boolean padHere() {
+        for (int i = 0; i < 2; i++) {
+            Vision.Result r = Monitor.fresh(SystemClock.uptimeMillis() + 120, 900);
+            if (r != null && sure(r) && ownHive(r)) return true;
+        }
+        return false;
     }
 
     static final double FACING_PAD = 0.35;     // straight on from the hive pad: 0.40-0.74 live
@@ -813,10 +853,21 @@ final class Engine implements Runnable {
     /** The hive→field route was recorded at base speed. Over ~35 s of walking (~290 tiles) a 3% speed error is ~9
      *  tiles, i.e. the wrong field, so leave only once Haste (20 s max) has worn off. */
     private void waitHasteClear() {
-        long t0 = SystemClock.uptimeMillis();
+        long t0 = SystemClock.uptimeMillis(); int same = 0, stacks = -2; long seen = 0;
         while (SystemClock.uptimeMillis() - t0 < 25_000) {
             Vision.Result r = waitFor(this::sure, 2000);
             if (r == null || !r.haste) { if (SystemClock.uptimeMillis() - t0 > 500) Log.add("haste: cleared after " + (SystemClock.uptimeMillis() - t0) / 1000 + " s, starting the walk"); return; }
+            // Walks are Haste-corrected by distance now: only an unreadable or flickering stack count is worth waiting
+            // out. The same count on 4 different frames in a row (~2 s) is trusted, and the walk starts at that speed.
+            if (Monitor.lastTime != seen) {
+                seen = Monitor.lastTime;
+                if (r.hasteStacks > 0 && r.hasteStacks == stacks) same++; else { same = r.hasteStacks > 0 ? 1 : 0; stacks = r.hasteStacks; }
+            }
+            if (same >= 4) {
+                liveSpeed = Math.round(speedFactor(r, 1 + 0.1 * Math.min(10, stacks)) * 1000) / 1000.0; hasteMul = 1 + 0.1 * Math.min(10, stacks);
+                Log.add(String.format(Locale.US, "haste: x%d read steadily, walking now at x%.2f (distance-corrected) instead of waiting", stacks, liveSpeed));
+                return;
+            }
             decide("Waiting for Haste", "Haste is active; the route distances assume base speed, so walking now could overshoot.",
                     "buff row: Haste" + (r.hasteStacks > 0 ? " x" + r.hasteStacks : ""), "leave when Haste ends (≤20 s)", r.hasteConf);
             step = "Waiting for Haste to end before the walk (" + (SystemClock.uptimeMillis() - t0) / 1000 + " s)";
