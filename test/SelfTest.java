@@ -136,8 +136,15 @@ public class SelfTest {
         Catalog cat = Catalog.load(new java.io.FileInputStream("assets/catalog.tsv"), new java.io.FileInputStream("assets/catalog.bin"));
         java.util.Map<String, Integer> kinds = new java.util.TreeMap<>();
         for (Catalog.Entry e : cat.entries) kinds.merge(e.kind, 1, Integer::sum);
-        check(cat.entries.size() >= 130 && cat.entries.stream().allMatch(e -> !e.url.isEmpty() && e.status.equals("wiki-reference")),
-              "catalog: " + cat.entries.size() + " entries " + kinds + ", every one with its wiki source URL, all marked unverified until seen in-game");
+        check(cat.entries.size() >= 130 && cat.entries.stream().allMatch(e -> !e.url.isEmpty() && (e.status.equals("wiki-reference") || e.status.equals("verified-in-game"))),
+              "catalog: " + cat.entries.size() + " entries " + kinds + ", every one with its source, wiki icons marked unverified until seen in-game");
+        {   // the black-bear Bear Morph icon cut from your buff row is found there again (box 1 px off, as live slots are)
+            BufferedImage br = ImageIO.read(new File("test/fixtures/buffrow_bear_black.png"));
+            int rw = br.getWidth(), rh = br.getHeight();
+            Catalog.Match bm = cat.match(br.getRGB(0, 0, rw, rh, null, 0, rw), rw, rh, 414, 5, 36, 36, true, e -> e.buffRow(), null);
+            check(bm.best != null && bm.best.name.equals("Bear Morph") && bm.score - bm.second >= 0.1,
+                  String.format("buff row: Bear Morph (black bear) recognised (%.2f vs next %s %.2f)", bm.score, bm.secondName, bm.second));
+        }
 
         // Buff row vs hand-checked ground truth (test/buff_truth.txt; live frames are in test/report/frames)
         int tp = 0, fp = 0, fn = 0, tn = 0;

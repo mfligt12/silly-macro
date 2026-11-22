@@ -751,7 +751,7 @@ final class Engine implements Runnable {
     /** Live speed multiple: Haste stacks plus Coconut Haste, Bear Morph, Oil and Super Smoothie (Natro's formula, Moves.speedFactor). */
     private double speedFactor(Vision.Result r, double hasteMul) {
         boolean bear = false, oil = false, smoothie = false;
-        for (Buffs.Effect e : Monitor.activeBuffs()) { bear |= e.name.equals("Bear Morph"); oil |= e.name.equals("Oil"); smoothie |= e.name.equals("Super Smoothie"); }
+        for (Buffs.Effect e : Monitor.activeBuffs()) { bear |= e.name.endsWith("Bear Morph"); oil |= e.name.equals("Oil"); smoothie |= e.name.equals("Super Smoothie"); }
         return Moves.speedFactor(p.moveSpeed, p.hastyGuard, p.giftedHasty, hasteMul, r.coconutHaste, bear, false, oil, smoothie);
     }
     /** Which speed buffs are counted right now, for the log. */
@@ -759,7 +759,7 @@ final class Engine implements Runnable {
         Vision.Result r = Monitor.last; StringBuilder b = new StringBuilder();
         if (hasteMul > 1) b.append("Haste x").append(Math.round((hasteMul - 1) * 10)).append(" ");
         if (r != null && r.coconutHaste) b.append("Coconut Haste ");
-        for (Buffs.Effect e : Monitor.activeBuffs()) if (e.name.equals("Bear Morph") || e.name.equals("Oil") || e.name.equals("Super Smoothie")) b.append(e.name).append(" ");
+        for (Buffs.Effect e : Monitor.activeBuffs()) if (e.name.endsWith("Bear Morph") || e.name.equals("Oil") || e.name.equals("Super Smoothie")) b.append(e.name).append(" ");
         return b.length() == 0 ? "base speed" : b.toString().trim();
     }
 
