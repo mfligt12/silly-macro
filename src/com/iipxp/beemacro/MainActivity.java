@@ -59,6 +59,9 @@ public class MainActivity extends Activity {
             {"seq", "🧩", "Sequences", "Field, pattern & sprinkler"}, {"nav", "🧭", "Navigation", "Guard, edges, drift & camera"},
             {"hive", "🍯", "Hive", "Hive, conversion & balloon"}, {"stats", "📊", "Statistics", "Honey & sessions"},
             {"perf", "⚡", "Performance", "Vision speed, heat & battery"}, {"settings", "⚙", "Settings", "Overlay, overnight & key sender"}};
+    /** Simple by default: the tabs most players never need stay hidden until Settings → Show advanced tabs. */
+    static final java.util.Set<String> ADVANCED = new java.util.HashSet<>(java.util.Arrays.asList("tokens", "buffs", "seq", "nav", "perf"));
+    boolean hidden(String key) { return !p.advanced && ADVANCED.contains(key); }
     final Map<String, View> pages = new LinkedHashMap<>();
     final Map<String, TextView> railItems = new LinkedHashMap<>(), drawerItems = new LinkedHashMap<>();
     FrameLayout content; View scrim; LinearLayout drawer; View current; String currentKey = "home";
@@ -140,6 +143,7 @@ public class MainActivity extends Activity {
         ScrollView sv = new ScrollView(this); sv.setVerticalScrollBarEnabled(false);
         LinearLayout items = new LinearLayout(this); items.setOrientation(LinearLayout.VERTICAL); items.setGravity(Gravity.CENTER_HORIZONTAL);
         for (String[] t : TABS) {
+            if (hidden(t[0])) continue;
             TextView it = railButton(t[1]); it.setContentDescription(t[2]);
             it.setOnClickListener(v -> show(t[0], true));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(48), dp(48)); lp.setMargins(0, dp(3), 0, dp(3));
@@ -168,6 +172,7 @@ public class MainActivity extends Activity {
         ScrollView sv = new ScrollView(this);
         LinearLayout items = new LinearLayout(this); items.setOrientation(LinearLayout.VERTICAL);
         for (String[] t : TABS) {
+            if (hidden(t[0])) continue;
             TextView it = tv(t[1] + "    " + t[2], 15, TXT); it.setGravity(Gravity.CENTER_VERTICAL); it.setPadding(dp(14), 0, dp(10), 0);
             it.setOnClickListener(v -> { show(t[0], true); drawer(false); });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(46)); lp.setMargins(0, dp(2), 0, dp(2));
@@ -292,8 +297,14 @@ public class MainActivity extends Activity {
         // setup / ready check (unchanged steps)
         LinearLayout c = card("Setup & ready check");
         checks = tv("", 13, TXT); checks.setLineSpacing(0, 1.25f); c.addView(checks);
-        c.addView(button("1 · Enable input (Accessibility → Silly Macro)", PURPLE, v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))));
-        c.addView(button("2 · Allow screen capture", PURPLE, v -> {
+        // one numbered path for new players: each step is a button, the ✅/⚠️ list above shows what's done
+        c.addView(button("1 · Turn on Silly Macro (Accessibility → Silly Macro → On)", PURPLE, v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))));
+        c.addView(button(shizukuInstalled() ? "2 · Start the keyboard + mouse (Shizuku must be running)" : "2 · Get Shizuku (it runs the keyboard + mouse)", PURPLE, v -> {
+            if (!shizukuInstalled()) { getShizuku(); return; }
+            Toast.makeText(this, "Starting the keyboard + mouse…", Toast.LENGTH_SHORT).show();
+            new Thread(() -> { String m = ShizukuKeys.start(this); Log.add("shizuku: " + m); runOnUiThread(() -> Toast.makeText(this, m, Toast.LENGTH_LONG).show()); }).start();
+        }));
+        c.addView(button("3 · Allow screen capture (pick \"Entire screen\")", PURPLE, v -> {
             if (CaptureService.inst == null) {
                 MediaProjectionManager mpm = getSystemService(MediaProjectionManager.class);
                 // Android 14+ offers "A single app" first: the macro then sees a black screen ("dark", HUD not recognized). Ask for the whole screen.
@@ -303,11 +314,12 @@ public class MainActivity extends Activity {
             }
             else toast("Screen capture already running");
         }));
-        c.addView(button("3 · Open Bee Swarm (your private server)", BLUE, v -> {
+        c.addView(button("4 · Pick your hive slot (Hive tab)", PURPLE, v -> show("hive", true)));
+        c.addView(button("5 · Open Bee Swarm (your private server)", BLUE, v -> {
             try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(p.serverLink)).setPackage("com.roblox.client")); }
             catch (Exception e) { toast("Roblox not installed"); }
         }));
-        c.addView(tv("4 · In the game, press ▶ Start here or on the floating panel. Key sender and Shizuku: Settings tab.", 12, DIM));
+        c.addView(tv("6 · In the game, hold your phone sideways and press ▶ Start on the floating panel. The app reads your screen by itself.", 12, DIM));
     }
     GradientDrawable heroBg() {
         GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xCC2A1660, 0xB3121C3F});
@@ -462,8 +474,6 @@ public class MainActivity extends Activity {
         m.addView(stepper("Camera: swipe px per 45°", () -> p.pxPer45 + " px", x -> p.pxPer45 = clamp(p.pxPer45 + x * 5, 100, 900)));
         m.addView(stepper("Camera: tilt px per step", () -> p.tiltPx + " px", x -> p.tiltPx = clamp(p.tiltPx + x * 5, 10, 300)));
         m.addView(toggle("Camera reset by eye on this device (set automatically when needed)", p.camGuided, on -> p.camGuided = on));
-        m.addView(stepper("Screen UI scale (0 = auto)", () -> p.uiScale == 0 ? "auto · " + Monitor.calState : p.uiScale + "%",
-                x -> { p.uiScale = p.uiScale == 0 && x > 0 ? 100 : clamp(p.uiScale + x * 2, 0, 250); if (p.uiScale < 40) p.uiScale = 0; Monitor.recalibrate(); }));
         m.addView(tv("Roblox Settings → Camera Mode must be Classic and Shift Lock Switch On.", 12, DIM));
     }
 
@@ -479,6 +489,7 @@ public class MainActivity extends Activity {
         hr.addView(button("+", 0, v -> { p.hiveSlot = Math.min(6, p.hiveSlot + 1); p.hiveConfirmed = false; App.save(this); refresh(); }), new LinearLayout.LayoutParams(0, dp(48), 1));
         hr.addView(button("Confirm slot", PURPLE, v -> { p.hiveConfirmed = true; App.save(this); Log.add("hive: slot " + p.hiveSlot + " confirmed by user"); refresh(); }), new LinearLayout.LayoutParams(0, dp(48), 2));
         hv.addView(hr);
+        hv.addView(stepper("Your move speed (Bee Swarm stats)", () -> String.format(Locale.US, "%.2f", p.moveSpeed), x -> p.moveSpeed = Math.round((p.moveSpeed + x * 0.05) * 100) / 100.0));
         LinearLayout cv = card("Conversion");
         cv.addView(toggle("Automatic conversion", p.autoConvert, on -> p.autoConvert = on));
         cv.addView(toggle("Automatic return to field", p.autoReturn, on -> p.autoReturn = on));
@@ -542,6 +553,7 @@ public class MainActivity extends Activity {
         LinearLayout o = card("Floating overlay");
         overlaySwitch = (Switch) toggle("Show floating overlay", p.overlayVisible, on -> { p.overlayVisible = on; if (MacroService.inst != null) MacroService.inst.showOverlay(on); });
         o.addView(overlaySwitch);
+        o.addView(toggle("Show advanced tabs (tokens, buffs, patterns, navigation, performance)", p.advanced, on -> { p.advanced = on; App.save(this); recreate(); }));
         o.addView(stepper("Overlay width", () -> p.overlayWidthDp + " dp", d -> p.overlayWidthDp = clamp(p.overlayWidthDp + d * 10, 170, 230)));
         o.addView(tv("Overlay transparency", 13, DIM));
         SeekBar sb = new SeekBar(this); sb.setMax(70); sb.setProgress(Math.round(p.overlayAlpha * 100) - 30);

@@ -60,7 +60,7 @@ final class Monitor {
     private static long unknownSince, lastAutoRecal;
     static void hurry() { unknownSince = 1; lastAutoRecal = 0; }   // Start is waiting: re-measure on the next frame if needed
     private static void autoRecalibrate(Profile p, Vision.Result r, CaptureService.Frame f, long now) {
-        if (r.screen != Vision.Screen.UNKNOWN || p.uiScale > 0) { unknownSince = 0; return; }
+        if (r.screen != Vision.Screen.UNKNOWN) { unknownSince = 0; return; }
         if (unknownSince == 0) { unknownSince = now; return; }
         if (now - unknownSince < 5000 || now - lastAutoRecal < 20_000 || !Remap.hudVisible(f.px, f.w, f.h)) return;
         lastAutoRecal = now; unknownSince = 0;
@@ -68,7 +68,6 @@ final class Monitor {
         recalibrate(); calState = "re-measuring automatically";
     }
     private static void calibrateStep(Profile p, CaptureService.Frame f, long now) {
-        if (p.uiScale > 0) { Remap.uiCal = p.uiScale / 100.0; calState = "set by hand: " + p.uiScale + "%"; return; }
         if (!Remap.tablet(f.w, f.h)) { phoneStep(f, now); return; }
         if (Remap.uiCal > 0 || now - calTry < 3000) return;
         calTry = now;
@@ -93,6 +92,8 @@ final class Monitor {
         if (now - calTry < (Remap.phoneCal == null ? 1500 : 60_000)) return;   // re-checked every minute (UI scale can change)
         calTry = now;
         Remap.Phone ph = Remap.locatePhone(f.px, f.w, f.h);
+        // the S23's own screen size already reads as it is: no need to wait for a measurement there
+        if (ph == null && f.w == Remap.W && f.h == Remap.H && Vision.hudConfidence(f.px, f.w, f.h) >= 0.75) ph = new Remap.Phone(1, Remap.S23_CX, Remap.S23_TOP, 0);
         if (ph == null) { if (Remap.phoneCal == null) calState = "phone: looking for the Honey/Pollen counters"; return; }
         synchronized (phoneSamples) {
             phoneSamples.add(ph);

@@ -480,6 +480,24 @@ public class SelfTest {
           }
           Remap.uiCal = 0;
           check(tbad == 0, "tablets & foldables: " + tabs.length + " screen sizes x " + tfx.length + " frames = " + truns + " runs, " + (truns - tbad) + " read like the Tab S9 FE" + twhy); }
+        { // Bee Swarm's newer HUD (dark number boxes) with a light beam crossing the Pollen counter: live S23, 2026-11-22.
+          // The pill search returned nothing, so phones never finished measuring ("can't calibrate" loop on Discord)
+          File ff = new File("test/fixtures/s23_newhud_beam.png");
+          if (ff.exists()) {
+              BufferedImage im = ImageIO.read(ff); int iw = im.getWidth(), ih = im.getHeight(); int[] px = im.getRGB(0, 0, iw, ih, null, 0, iw);
+              Remap.Phone ph = Remap.locatePhone(px, iw, ih);
+              check(ph != null && ph.s23(iw, ih), "new HUD + beam over the Pollen counter: S23 layout found (" + ph + ")");
+              int ok = 0, n = 0; StringBuilder why = new StringBuilder();
+              for (double km : new double[]{0.85, 1.0, 1.15}) for (int[] d : new int[][]{{2400, 1080}, {1600, 720}, {3088, 1440}}) {
+                  int w = d[0], h = d[1]; double k = h / 1080.0 * km;
+                  if (590 * k > w / 2.0 - 6 * k - 556 * k) continue;   // the new top-left buttons (to x 590 on the S23) would sit on the Honey counter: no real phone
+                  int[] q = phoneScreen(px, iw, ih, w, h, k, 0); n++;
+                  Remap.Phone p2 = Remap.locatePhone(q, w, h);
+                  if (p2 != null && Math.abs(p2.k - k) < 0.02 * k) ok++; else why.append(String.format(" %dx%d k%.2f:%s", w, h, k, p2));
+              }
+              check(ok == n, "new HUD on other phones: measured on " + ok + "/" + n + why);
+          }
+        }
         { // auto re-measure needs the counters found anywhere: they must be found on tablet and foldable screens too
           int found = 0, runs = 0; StringBuilder miss = new StringBuilder();
           for (Object[] d : new Object[][]{{2304, 1440}, {2176, 1812}, {2800, 1752}, {1920, 1200}})

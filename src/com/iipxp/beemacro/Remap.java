@@ -130,11 +130,25 @@ public final class Remap {
                 x = Math.max(xe0, e) + 1;
             }
         }
+        // a bright effect crossing a pill (a light beam, live on the S23 2026-11-22) cuts its outline in two: join pieces
+        // on the same rows whose union has a pill's shape again
+        for (boolean joined = true; joined; ) {
+            joined = false;
+            for (int i = 0; i < comps.size() && !joined; i++) for (int j = 0; j < comps.size() && !joined; j++) {
+                int[] a = comps.get(i), b = comps.get(j);
+                if (i == j || a[0] >= b[0] || b[0] - a[1] > 0.06 * w || b[0] - a[1] < 0 || a[2] > 0.15 * h) continue;
+                if (Math.abs(a[2] - b[2]) > s + 1 || Math.abs(a[3] - b[3]) > s + 1) continue;
+                double uw = b[1] - a[0], uh = Math.max(a[3], b[3]) - Math.min(a[2], b[2]);
+                if (uw / uh < 5.5 || uw / uh > 11 || (a[1] - a[0]) / (double) (a[3] - a[2]) >= 5.5 && (b[1] - b[0]) / (double) (b[3] - b[2]) >= 5.5) continue;   // not two whole pills
+                comps.set(i, new int[]{a[0], b[1], Math.min(a[2], b[2]), Math.max(a[3], b[3]), a[4] + b[4]}); comps.remove(j); joined = true;
+            }
+        }
         int[] bl = null, br = null; double best = 0;
         for (int[] a : comps) for (int[] b : comps) {
             if (a == b || a[0] >= b[0]) continue;
             double wa = a[1] - a[0], wb = b[1] - b[0], ha = a[3] - a[2], hb = b[3] - b[2];
             if (wa < 0.08 * w || Math.abs(wa - wb) > 0.12 * Math.max(wa, wb)) continue;            // two equal pills
+            if (ha < 0.04 * h) continue;                                                             // 6% of the height on the S23; UI scale never goes near 0.65
             if (wa / ha < 5.5 || wa / ha > 11 || wb / hb < 5.5 || wb / hb > 11) continue;           // 8.6:1 measured
             if (Math.abs(a[2] - b[2]) > 0.03 * h || b[0] - a[1] > 0.03 * w || b[0] - a[1] < -0.01 * w) continue;   // side by side, meeting
             double mid = (a[1] + b[0]) / 2.0;
