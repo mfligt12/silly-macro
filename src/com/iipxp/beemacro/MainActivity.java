@@ -298,7 +298,17 @@ public class MainActivity extends Activity {
         LinearLayout c = card("Setup & ready check");
         checks = tv("", 13, TXT); checks.setLineSpacing(0, 1.25f); c.addView(checks);
         // one numbered path for new players: each step is a button, the ✅/⚠️ list above shows what's done
-        c.addView(button("1 · Turn on Silly Macro (Accessibility → Silly Macro → On)", PURPLE, v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))));
+        c.addView(button("1 · Turn on Silly Macro (Accessibility → Silly Macro → On)", PURPLE, v -> {
+            if (MacroService.inst != null) { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); return; }
+            // apps installed from a file: Android greys the switch out ("Controlled by Restricted setting") until allowed
+            new android.app.AlertDialog.Builder(this).setTitle("Turn on Silly Macro")
+                    .setMessage("In the list, tap Silly Macro, switch it on and tap Allow.\n\n"
+                            + "Switch greyed out (\"Controlled by Restricted setting\")? Tap App info below, then the ⋮ menu at the top right → "
+                            + "Allow restricted settings, and come back here.")
+                    .setPositiveButton("Open Accessibility", (d, w) -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)))
+                    .setNeutralButton("App info", (d, w) -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))))
+                    .show();
+        }));
         c.addView(button(shizukuInstalled() ? "2 · Start the keyboard + mouse (Shizuku must be running)" : "2 · Get Shizuku (it runs the keyboard + mouse)", PURPLE, v -> {
             if (!shizukuInstalled()) { getShizuku(); return; }
             Toast.makeText(this, "Starting the keyboard + mouse…", Toast.LENGTH_SHORT).show();
@@ -316,6 +326,7 @@ public class MainActivity extends Activity {
         }));
         c.addView(button("4 · Pick your hive slot (Hive tab)", PURPLE, v -> show("hive", true)));
         c.addView(button("5 · Open Bee Swarm (your private server)", BLUE, v -> {
+            showPanel();   // the panel's ✕ hid it for good before (Discord: "panel isn't popping up")
             try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(p.serverLink)).setPackage("com.roblox.client")); }
             catch (Exception e) { toast("Roblox not installed"); }
         }));
@@ -350,7 +361,15 @@ public class MainActivity extends Activity {
 
     /** Start from the app: bring Roblox to the front (its own launcher entry, which keeps the game running), then run
      *  the same preflight + engine the floating panel's Start uses. */
+    /** Bring the floating panel back (its ✕ turns it off; new players never found Settings → Show floating overlay). */
+    void showPanel() {
+        if (p.overlayVisible && MacroService.inst != null && MacroService.inst.overlayShown()) return;
+        p.overlayVisible = true; App.save(this);
+        if (overlaySwitch != null) overlaySwitch.setChecked(true);
+        if (MacroService.inst != null) MacroService.inst.showOverlay(true);
+    }
     void startMacro() {
+        showPanel();
         if (MacroService.inst == null) { toast("Enable input first (Setup on Home)"); return; }
         Engine e = Engine.inst;
         if (e != null && !e.finished()) { toast(e.paused ? "Paused: press Resume" : "Already running"); return; }
@@ -490,6 +509,19 @@ public class MainActivity extends Activity {
         hr.addView(button("Confirm slot", PURPLE, v -> { p.hiveConfirmed = true; App.save(this); Log.add("hive: slot " + p.hiveSlot + " confirmed by user"); refresh(); }), new LinearLayout.LayoutParams(0, dp(48), 2));
         hv.addView(hr);
         hv.addView(stepper("Your move speed (Bee Swarm stats)", () -> String.format(Locale.US, "%.2f", p.moveSpeed), x -> p.moveSpeed = Math.round((p.moveSpeed + x * 0.05) * 100) / 100.0));
+        hv.addView(button("Type your move speed", 0, v -> {   // e.g. 29.9: the − / + steps can't land on every value
+            android.widget.EditText et = new android.widget.EditText(this);
+            et.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            et.setText(String.format(Locale.US, "%.2f", p.moveSpeed)); et.setSelectAllOnFocus(true);
+            new android.app.AlertDialog.Builder(this).setTitle("Move speed").setMessage("From your stats in Bee Swarm (e.g. 29.9)").setView(et)
+                    .setPositiveButton("Save", (d, w) -> {
+                        try {
+                            double ms = Double.parseDouble(et.getText().toString().trim().replace(',', '.'));
+                            if (ms < 10 || ms > 80) { toast("Move speed must be between 10 and 80"); return; }
+                            p.moveSpeed = Math.round(ms * 100) / 100.0; App.save(this); refresh(); toast("Move speed set to " + p.moveSpeed);
+                        } catch (NumberFormatException e) { toast("Type a number like 29.9"); }
+                    }).setNegativeButton("Cancel", null).show();
+        }));
         LinearLayout cv = card("Conversion");
         cv.addView(toggle("Automatic conversion", p.autoConvert, on -> p.autoConvert = on));
         cv.addView(toggle("Automatic return to field", p.autoReturn, on -> p.autoReturn = on));

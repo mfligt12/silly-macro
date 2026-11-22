@@ -448,6 +448,32 @@ public final class Vision {
 
     static boolean isPromptBlue(int p) { return b(p) > r(p) + 70 && b(p) > g(p) + 25 && b(p) > 150; }
     static boolean isPromptRed(int p) { return r(p) > b(p) + 60 && r(p) > g(p) + 60 && r(p) > 130; }
+    /** The biggest blue button on a raw frame (any screen shape): Roblox's Resume in the menu, or Respawn in the
+     *  "Are you sure you want to respawn?" dialog. {x0, x1, y0, y1} in frame pixels, or null. Found by sight so the
+     *  taps don't depend on where a device draws them (fixed spots hit Leave / Invite Friends on other screens). */
+    public static int[] blueButton(int[] px, int w, int h) {
+        int s = Math.max(2, h / 270), gw = w / s, gh = h / s;
+        boolean[] m = new boolean[gw * gh];
+        for (int y = (int) (0.15 * gh); y < (int) (0.9 * gh); y++) for (int x = 0; x < gw; x++) m[y * gw + x] = isMenuBlue(px[(y * s) * w + x * s]);
+        int[] q = new int[gw * gh]; boolean[] seen = new boolean[gw * gh]; int[] best = null; int bestN = 0;
+        for (int i = 0; i < m.length; i++) {
+            if (!m[i] || seen[i]) continue;
+            int qa = 0, qb = 0, x0 = gw, x1 = 0, y0 = gh, y1 = 0; q[qb++] = i; seen[i] = true;
+            while (qa < qb) {
+                int c = q[qa++], cx = c % gw, cy = c / gw;
+                x0 = Math.min(x0, cx); x1 = Math.max(x1, cx); y0 = Math.min(y0, cy); y1 = Math.max(y1, cy);
+                if (cx > 0 && m[c - 1] && !seen[c - 1]) { seen[c - 1] = true; q[qb++] = c - 1; }
+                if (cx < gw - 1 && m[c + 1] && !seen[c + 1]) { seen[c + 1] = true; q[qb++] = c + 1; }
+                if (cy > 0 && m[c - gw] && !seen[c - gw]) { seen[c - gw] = true; q[qb++] = c - gw; }
+                if (cy < gh - 1 && m[c + gw] && !seen[c + gw]) { seen[c + gw] = true; q[qb++] = c + gw; }
+            }
+            double bw = (x1 - x0 + 1) * s, bh = (y1 - y0 + 1) * s;
+            if (bw < 0.08 * w || bh < 0.04 * h || bh > 0.2 * h || bw / bh < 2 || bw / bh > 12) continue;   // a button, not a sky or a bar
+            if (qb < 0.6 * (x1 - x0 + 1) * (y1 - y0 + 1)) continue;                                        // mostly filled (text inside is fine)
+            if (qb > bestN) { bestN = qb; best = new int[]{x0 * s, (x1 + 1) * s, y0 * s, (y1 + 1) * s}; }
+        }
+        return best;
+    }
     static boolean isMenuBlue(int p) { return b(p) > 85 && b(p) < 175 && r(p) < 60 && g(p) < 90 && b(p) > g(p) + 40; }
 
     interface Pred { boolean ok(int p); }

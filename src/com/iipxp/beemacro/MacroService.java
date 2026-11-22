@@ -458,7 +458,8 @@ public class MacroService extends AccessibilityService {
             if (overlay != null) return;
             buildOverlay();
             if (motion()) { overlay.setAlpha(0); overlay.setScaleX(0.95f); overlay.setScaleY(0.95f); }
-            wm.addView(overlay, lp);
+            try { wm.addView(overlay, lp); }
+            catch (Exception e) { Log.add("overlay: couldn't show the floating panel: " + e); overlay = null; return; }
             if (motion()) overlay.post(() -> {   // grows out of the corner it is docked to
                 if (overlay == null) return;
                 overlay.setPivotX(lp.x < screen().x / 2 ? 0 : overlay.getWidth()); overlay.setPivotY(0);

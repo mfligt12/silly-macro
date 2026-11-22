@@ -1095,16 +1095,32 @@ final class Engine implements Runnable {
     /** The hive/cannon prompt: E on the keyboard, a tap otherwise. */
     private void prompt() { if (p.keyboard()) in.key(Keys.E, 60); else in.tap(T().promptX, T().promptY); }
 
-    /** Keyboard respawn (measured on the tablet): Esc opens the menu, R the confirmation, Enter confirms. */
+    /** Roblox's blue button on the screen right now, as a tap point (screen fractions), or null. menu=true: Respawn,
+     *  just left of the blue Resume (right half, upper part); menu=false: the dialog's blue Respawn (left of centre).
+     *  Found by sight on every screen shape; the fixed spots hit Leave / Invite Friends on some devices (Discord). */
+    private float[] blueTap(boolean menu) {
+        long t = SystemClock.uptimeMillis(); Monitor.shotWanted = true;
+        while (Monitor.shotTime < t && SystemClock.uptimeMillis() - t < 1500) SystemClock.sleep(40);
+        int[] px = Monitor.shotPx; int w = Monitor.shotW, h = Monitor.shotH;
+        if (px == null || Monitor.shotTime < t) return null;
+        int[] b = Vision.blueButton(px, w, h); if (b == null) return null;
+        double bw = b[1] - b[0], cx = (b[0] + b[1]) / 2.0, cy = (b[2] + b[3]) / 2.0;
+        if (menu) { if (cx < 0.55 * w || cy > 0.6 * h) return null; cx = b[0] - 0.52 * bw; }   // Leave | Respawn | Resume, equal widths
+        else if (cx > 0.5 * w || cy < 0.35 * h) return null;                                   // Respawn | Don't Respawn
+        return cx < 0 ? null : new float[]{(float) (cx / w), (float) (cy / h)};
+    }
+    /** Is the "Are you sure you want to respawn?" dialog up? (recognised, or its blue Respawn button found) */
+    private boolean dialogUp() { Vision.Result r = Monitor.last; return (r != null && r.screen == Vision.Screen.RESPAWN_DIALOG) || blueTap(false) != null; }
+
+    /** Keyboard respawn: Esc opens the menu, then Respawn and its confirmation, by key where Roblox takes it and by a
+     *  tap on the button found on screen where it doesn't (phones and tablets alike since Roblox's 2026 menu). */
     private boolean respawnKeys() {
-        android.graphics.Point z = in.screen();
-        boolean phone = !Remap.tablet(Math.max(z.x, z.y), Math.min(z.x, z.y));   // phone-shaped screen (S23 layout)
         // Continue from whatever is already open: pressing Esc on an open menu would close it again.
         Vision.Screen now = Monitor.last == null ? null : Monitor.last.screen;
-        if (now != Vision.Screen.RESPAWN_DIALOG) {
+        if (now != Vision.Screen.RESPAWN_DIALOG && !dialogUp()) {
             if (now != Vision.Screen.MENU) {
                 in.key(Keys.ESC, 60);
-                if (waitFor(r -> r.screen == Vision.Screen.MENU, 3000) == null) return false;
+                if (waitFor(r -> r.screen == Vision.Screen.MENU, 3000) == null && blueTap(true) == null) return false;
             }
             sleep(400);
             // Roblox reopens the menu on the last tab used (Settings, after setting Camera Mode): Respawn is on People
@@ -1114,19 +1130,23 @@ final class Engine implements Runnable {
                 in.tap(T().peopleX, T().peopleY); sleep(700);
             }
             in.key(Keys.R, 60);
-            Vision.Result dlg = waitFor(r -> r.screen == Vision.Screen.RESPAWN_DIALOG, phone ? 1200 : 3000);
-            if (dlg == null && phone) {   // phones: R is no shortcut in this menu (S23, 2026-11-21): click its Respawn button
-                Log.add("respawn: R gave no dialog, clicking Respawn in the menu");
-                in.tap(T().respawnX, T().respawnY);
-                dlg = waitFor(r -> r.screen == Vision.Screen.RESPAWN_DIALOG, 3000);
+            boolean dlg = waitFor(r -> r.screen == Vision.Screen.RESPAWN_DIALOG, 1200) != null || dialogUp();
+            if (!dlg) {   // R is no shortcut in Roblox's newer menu: click its Respawn button
+                float[] b = blueTap(true);
+                Log.add("respawn: R gave no dialog, clicking Respawn in the menu" + (b != null ? " (found next to Resume)" : " (usual spot)"));
+                in.tap(b != null ? b[0] : T().respawnX, b != null ? b[1] : T().respawnY);
+                long t0 = SystemClock.uptimeMillis();
+                while (!(dlg = dialogUp()) && SystemClock.uptimeMillis() - t0 < 3000) sleep(200);
             }
-            if (dlg == null) { in.key(Keys.ESC, 60); sleep(800); return false; }
+            if (!dlg) { in.key(Keys.ESC, 60); sleep(800); return false; }
         }
         sleep(300);
         in.key(Keys.ENTER, 60);
-        if (phone && waitFor(r -> r.screen != Vision.Screen.RESPAWN_DIALOG, 1200) == null) {   // Enter didn't confirm: click Respawn in the dialog
-            Log.add("respawn: Enter didn't confirm, clicking the dialog's Respawn");
-            in.tap(T().confirmX, T().confirmY);
+        sleep(900);
+        if (dialogUp()) {   // Enter didn't confirm: click the dialog's blue Respawn
+            float[] b = blueTap(false);
+            Log.add("respawn: Enter didn't confirm, clicking the dialog's Respawn" + (b != null ? " (found)" : " (usual spot)"));
+            in.tap(b != null ? b[0] : T().confirmX, b != null ? b[1] : T().confirmY);
         }
         if (waitFor(this::sure, 8000) == null) return false;
         sleep(2500);

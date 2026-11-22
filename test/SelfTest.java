@@ -508,6 +508,20 @@ public class SelfTest {
               ok &= r.screen.name().equals(wv[1]); menuGot.append(' ').append(wv[0].replace("s23_", "").replace(".png", "")).append('=').append(r.screen).append(r.menuPeople ? "(people)" : "");
           }
           if (n > 0) check(ok, "new Roblox menu recognized on every tab:" + menuGot); }
+        { // Respawn by sight: the blue Resume in the menu (Respawn is just left of it) and the dialog's blue Respawn,
+          // on phone and tablet frames; no blue button on game frames (fixed tap spots hit Leave on other screens)
+          String[][] btnWant = {{"s23_newmenu_people.png", "menu"}, {"s23_kb_menu.png", "menu"}, {"s23_kb_respawn_dialog.png", "dialog"},
+                  {"tab_respawn_dialog.png", "dialog"}, {"s23_newhud_hive.png", "none"}, {"s23_newhud_beam.png", "none"},
+                  {"s23_kb_turn0.png", "none"}, {"tab_field_middle.png", "none"}, {"tab_facing_hive.png", "none"}, {"dark_scene_cannon.png", "none"}};
+          boolean btnOk = true; StringBuilder btnR = new StringBuilder(); int n = 0;
+          for (String[] t : btnWant) {
+              File ff = new File("test/fixtures/" + t[0]); if (!ff.exists()) continue; n++;
+              BufferedImage im = ImageIO.read(ff); int iw = im.getWidth(), ih = im.getHeight();
+              int[] bb = Vision.blueButton(im.getRGB(0, 0, iw, ih, null, 0, iw), iw, ih);
+              String kind = bb == null ? "none" : (bb[0] + bb[1]) / 2.0 > 0.55 * iw && (bb[2] + bb[3]) / 2.0 < 0.6 * ih ? "menu" : (bb[0] + bb[1]) / 2.0 < 0.5 * iw ? "dialog" : "other";
+              btnOk &= kind.equals(t[1]); btnR.append(' ').append(t[0].replace(".png", "")).append('=').append(kind);
+          }
+          if (n > 0) check(btnOk, "respawn buttons found by sight:" + btnR); }
         { // auto re-measure needs the counters found anywhere: they must be found on tablet and foldable screens too
           int found = 0, runs = 0; StringBuilder miss = new StringBuilder();
           for (Object[] d : new Object[][]{{2304, 1440}, {2176, 1812}, {2800, 1752}, {1920, 1200}})
