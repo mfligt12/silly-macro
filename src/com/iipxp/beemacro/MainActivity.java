@@ -416,7 +416,8 @@ public class MainActivity extends Activity {
         LinearLayout bs = card("Buff recognition");
         bs.addView(toggle("Show buff-row boxes (Haste, Bear Morph…)", p.showBuffBoxes, on -> p.showBuffBoxes = on));
         bs.addView(stepper("Buff-row threshold", () -> String.format(Locale.US, "%.2f", p.buffMinConf), d -> p.buffMinConf = Math.max(0.5, Math.min(0.99, Math.round((p.buffMinConf + d * 0.05) * 100) / 100.0))));
-        bs.addView(toggle("Haste-adjust walks (same distance at live speed)", p.hasteAdjustSkillet, on -> p.hasteAdjustSkillet = on));
+        bs.addView(toggle("Haste correction for patterns (keeps their size)", p.hastePatterns, on -> p.hastePatterns = on));
+        bs.addView(toggle("Haste correction for Skillet too", p.hasteAdjustSkillet, on -> p.hasteAdjustSkillet = on));
     }
 
     // ------------------------------------------------------------------ Sequences: field, pattern, sprinkler

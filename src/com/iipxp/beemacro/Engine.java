@@ -710,8 +710,8 @@ final class Engine implements Runnable {
         switch (s.type) {
             case 'W': {
                 long ms = Math.round(s.ms(p.moveSpeed) * p.moveScale);
-                // Same Skillet distance; with Haste on it is covered at the live speed (shorter press) instead of drifting.
-                if (p.hasteAdjustSkillet) { ok = walkHold(new Moves.Step('H', s.keys, 1.0, (int) ms, null)); break; }
+                // Farming: the same distance, covered at the live Haste speed (shorter press), so the pattern keeps its shape.
+                if (hasteFix) { ok = walkHold(new Moves.Step('H', s.keys, 1.0, (int) ms, null)); break; }
                 ok = in.hold(MacroService.set(s.keys), ms); break;
             }
             case 'Y': ok = in.replay(Moves.recorded(s.label)); break;
@@ -780,7 +780,7 @@ final class Engine implements Runnable {
             final long[] last = {SystemClock.uptimeMillis()}, unreadSince = {0};
             final boolean[] lost = {false}, hopped = {false};
             final long started = last[0]; final long[] stillSince = {0}, stillTotal = {0};
-            final boolean guard = p.navGuard && p.keyboard();
+            final boolean guard = p.navGuard && p.keyboard() && !hasteFix;   // routes only: in the field the field guard decides (no jumps mid-pattern)
             final boolean[] lag = {false};
             Vision.Result bag0 = Monitor.last;
             final boolean emptyBag = bag0 != null && bagKnown(bag0) && bag0.pollen < 1   // a reset costs nothing yet
@@ -1110,13 +1110,16 @@ final class Engine implements Runnable {
     }
 
     /** The chosen farming pattern: Skillet, or a Natro Macro pattern read from assets/patterns (falls back to Skillet). */
+    private boolean natroPattern;   // the last farmPattern() is a Natro pattern (not Skillet or the Skillet fallback)
     private List<Moves.Step> farmPattern() {
+        natroPattern = false;
         if (!p.pattern.equals("Skillet")) {
             try (java.io.InputStream is = in.getAssets().open("patterns/" + p.pattern + ".ahk")) {
                 String src = new String(readAll(is), java.nio.charset.StandardCharsets.UTF_8);
                 List<Moves.Step> st = Patterns.steps(src, Patterns.size(p.patternSize), p.patternWidth, false, p.patternInvertFB, p.patternInvertLR, p.moveSpeed);
                 Log.add("farm: pattern " + p.pattern + " " + p.patternSize + " ×" + p.patternWidth + " (" + st.size() + " steps)");
                 nav = Routes.name(p.field) + " · " + p.pattern;
+                natroPattern = true;
                 return st;
             } catch (Exception e) { Log.add("farm: pattern " + p.pattern + " unreadable (" + e.getMessage() + "), using Skillet"); }
         }
@@ -1135,8 +1138,14 @@ final class Engine implements Runnable {
         } catch (Exception e) { throw new Recover("route " + file + " unreadable: " + e.getMessage()); }
     }
 
+    /** Farm walks are corrected for Haste (set per pattern in farm(), off for every other walk). */
+    private boolean hasteFix;
     private void farm() {
         List<Moves.Step> sk = farmPattern();
+        hasteFix = natroPattern ? p.hastePatterns : p.hasteAdjustSkillet;
+        try { farmLoop(sk); } finally { hasteFix = false; }
+    }
+    private void farmLoop(List<Moves.Step> sk) {
         Vision.Result r0 = waitFor(this::bagKnown, 4000);
         if (r0 == null) { pause("Backpack unreadable on arrival"); checkpoint(); throw new Recover("unreadable"); }
         // Make sure we landed in PINE TREE (blue/white flowers), not a neighbouring field, before farming.
@@ -1207,7 +1216,7 @@ final class Engine implements Runnable {
         String key = k.length() == 0 ? "no buffs" : k.toString();
         if (!key.equals(lastBuffKey)) {
             boolean haste = key.contains("Haste"), hadHaste = lastBuffKey.contains("Haste");
-            if (haste != hadHaste) decide("Farming", haste ? "Detected Haste. Player movement is faster than baseline. " + (p.hasteAdjustSkillet ? "Skillet walks are covered by distance at the live speed." : "Haste-adjust is off: Skillet timing unchanged.")
+            if (haste != hadHaste) decide("Farming", haste ? "Detected Haste. Player movement is faster than baseline. " + (hasteFix ? "Pattern walks are covered by distance at the live speed." : "Haste correction is off: pattern timing unchanged.")
                     : "Haste ended. Back to base movement timing.", "buff row: " + key, "continue Skillet", 1);
             else if (key.contains("Bear Morph") && !lastBuffKey.contains("Bear Morph")) decide("Farming", "Bear Morph detected. Added it to the active boost tracker.", "buff row: " + key, "continue Skillet", 1);
             lastBuffKey = key;
@@ -1336,11 +1345,26 @@ final class Engine implements Runnable {
         phase = "Farming";
     }
 
+    /** The sprinkler over 3 fresh frames (bees fly over it): the median spot when seen in at least 2, else null. */
+    private double[] sprinklerSteady() {
+        List<double[]> seen = new java.util.ArrayList<>();
+        long since = SystemClock.uptimeMillis();
+        for (int i = 0; i < 3; i++) {
+            if (Monitor.fresh(since, 800) == null) break;
+            since = Monitor.lastTime;
+            double[] s = sprinklerNow(); if (s != null) seen.add(s);
+        }
+        if (seen.size() < 2) return null;
+        seen.sort((x, y) -> Double.compare(x[0], y[0])); double mx = seen.get(seen.size() / 2)[0];
+        seen.sort((x, y) -> Double.compare(x[1], y[1])); double my = seen.get(seen.size() / 2)[1];
+        return new double[]{mx, my};
+    }
+
     /** Natro nm_fieldDriftCompensation with the learned sprinkler: if it is off-centre, walk toward it until it is
      *  back under the character (re-found every step; out of sight = stop, don't guess). Up to 5 s. */
     private void sprinklerDrift() {
         int[] a = anchor();
-        double[] s = sprinklerNow();
+        double[] s = sprinklerSteady();
         if (s == null) { prevResult = "sprinkler not in view (likely under the character)"; return; }
         double off = Math.hypot(s[0] - a[0], s[1] - a[1]) / a[2];
         if (off <= p.driftTolerance) { prevResult = String.format(Locale.US, "near the sprinkler (%.0f%% off)", off * 100); return; }
