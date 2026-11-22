@@ -278,7 +278,10 @@ final class Engine implements Runnable {
         if (p.fieldRotate != 0) in.rotate(-p.fieldRotate);  // Natro: rotate back before walking home
         waitHasteClear();
         phase("To hive", "nav"); nav = "Natro path: " + fname + " → hive pads (walk)";
-        run(pine ? Moves.natroPineHome(p.hiveSlot, p.moveSpeed) : route("wf-" + p.field), "walk home");
+        // the walk ends the moment our own pad's "Make Honey" shows (only our hive shows it): live, a speed boost the
+        // buff row didn't show made the route run on past the pad, and the search then went the wrong way
+        java.util.function.BooleanSupplier atPad = () -> { Vision.Result r = Monitor.last; return r != null && SystemClock.uptimeMillis() - Monitor.lastTime < 400 && ownHive(r); };
+        if (run(pine ? Moves.natroPineHome(p.hiveSlot, p.moveSpeed) : route("wf-" + p.field), "walk home", atPad)) Log.add("hive: own pad's prompt seen on the way, stopped the walk there");
         nav = "Finding own hive pad";
         natroFindHive();
         if (p.autoConvert) { phase("Converting", "convert"); convert(); tripConverted = true; }
@@ -438,11 +441,13 @@ final class Engine implements Runnable {
         java.util.function.BooleanSupplier at = () -> { Vision.Result r = Monitor.last; return r != null && SystemClock.uptimeMillis() - Monitor.lastTime < 400 && ownHive(r); };
         Vision.Result now = waitFor(this::sure, 2000);
         if (now == null || !ownHive(now)) {
-            boolean found = in.holdUntil(MacroService.set(new Moves.Key[]{Moves.Key.A}), 15_000, at);
+            // Natro holds Left up to 15 s; the route ends next to the pad (and now stops on it), so 6 s left (~50 tiles,
+            // five hives), then back right as far again and on: a pad passed on the way is found from the other side
+            boolean found = in.holdUntil(MacroService.set(new Moves.Key[]{Moves.Key.A}), 6_000, at);
             checkpoint();
-            if (!found && p.navGuard) {   // overshot the other way: search back along the hives before giving up
-                decide("Finding hive", "Own hive not found to the left; searching right.", "no hive prompt for 15 s", "reset if not found", 0.5);
-                found = in.holdUntil(MacroService.set(new Moves.Key[]{Moves.Key.D}), 30_000, at);
+            if (!found && p.navGuard) {
+                decide("Finding hive", "Own hive not found to the left; searching right.", "no hive prompt for 6 s", "reset if not found", 0.5);
+                found = in.holdUntil(MacroService.set(new Moves.Key[]{Moves.Key.D}), 16_000, at);
                 checkpoint();
             }
             if (!found) throw new Recover("own hive not found along the hive row");
@@ -598,15 +603,24 @@ final class Engine implements Runnable {
         if (p.autoConvert) { phase("Converting", "convert"); convert(); }
     }
 
-    private void run(List<Moves.Step> steps, String what) {
-        for (int i = 0; i < steps.size(); i++) {
-            checkpoint();
-            Moves.Step s = steps.get(i);
-            step = what + " " + (i + 1) + "/" + steps.size() + ": " + s;
-            exec(s);
-            guardBag(watchScreen());
-        }
+    private void run(List<Moves.Step> steps, String what) { run(steps, what, null); }
+    /** stopAt: checked while walking; when true the route ends there (e.g. our hive pad's prompt is up). Returns
+     *  whether it stopped early. */
+    private boolean run(List<Moves.Step> steps, String what, java.util.function.BooleanSupplier stopAt) {
+        walkStop = stopAt; walkStopped = false;
+        try {
+            for (int i = 0; i < steps.size(); i++) {
+                checkpoint();
+                Moves.Step s = steps.get(i);
+                step = what + " " + (i + 1) + "/" + steps.size() + ": " + s;
+                exec(s);
+                if (walkStopped || (stopAt != null && stopAt.getAsBoolean())) { in.emergencyRelease(); in.arm(); return true; }
+                guardBag(watchScreen());
+            }
+            return false;
+        } finally { walkStop = null; }
     }
+    private volatile java.util.function.BooleanSupplier walkStop; private volatile boolean walkStopped;
 
     // ------------------------------------------------------------------ screen guard (keyboard trip)
     static final double STILL = 6;          // motion below this = the world isn't moving (walking measured 39-93)
@@ -923,6 +937,8 @@ final class Engine implements Runnable {
             if (left[0] > 150 * v) {
                 boolean hit = in.holdUntil(keys, (long) (left[0] / v) + 3000, () -> {
                     long now = SystemClock.uptimeMillis();
+                    java.util.function.BooleanSupplier stopAt = walkStop;
+                    if (stopAt != null && stopAt.getAsBoolean()) { walkStopped = true; left[0] = 0; return true; }
                     long dt = now - last[0];
                     left[0] -= dt * cur[0]; last[0] = now;
                     if (now - started <= 1200) moved[0] += dt * cur[0];   // motion is not judged yet: count it as walked
