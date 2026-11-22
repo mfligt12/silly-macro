@@ -49,6 +49,8 @@ public final class Remap {
                 for (int y = first[2]; y <= first[3]; y++) if (HoneyOcr.fill(px[y * w + x])) { more = true; break; }
             if (!more) return uc;
         }
+        // ponytail: digits too small to read (8-inch tablets at UI 0.56, 16:9 phones at 0.5) leave the screen-height
+        // guess in place; the pills' span (1,040 px on the S9 FE) was tried and read 4-18% off when scenery touches them
         return 0;
     }
 

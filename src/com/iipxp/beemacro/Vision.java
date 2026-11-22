@@ -360,6 +360,17 @@ public final class Vision {
         }
         return m;
     }
+    /** The same for phones, on the S23-layout frame (the Pollen numbers' box: x 1280..1700, y 78..120 on the S23). */
+    public static boolean[] pollenTextS23(int[] px, int w, int h) {
+        int x0 = (int) (1280 / 2340.0 * w), x1 = (int) (1700 / 2340.0 * w), y0 = (int) (78 / 1080.0 * h), y1 = (int) (120 / 1080.0 * h);
+        boolean[] m = new boolean[Math.max(0, (x1 - x0) * (y1 - y0))];
+        int i = 0;
+        for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) {
+            int p = px[y * w + x];
+            m[i++] = ((p >> 16) & 255) > 215 && ((p >> 8) & 255) > 215 && (p & 255) > 215;
+        }
+        return m;
+    }
     /** Pixels that differ between two pollen-counter bitmaps (−1 if not comparable). */
     public static int textDiff(boolean[] a, boolean[] b) {
         if (a == null || b == null || a.length != b.length) return -1;

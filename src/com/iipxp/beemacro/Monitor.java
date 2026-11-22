@@ -159,6 +159,11 @@ final class Monitor {
                         FieldMessages.Said said = FieldMessages.read(f.px, f.w, f.h);
                         if (said == FieldMessages.Said.PINE_TREE) { msgPine = tn; msgOtherSince = 0; }
                         else if (said == FieldMessages.Said.OTHER_FIELD) { msgOther = tn; if (msgOtherSince == 0) msgOtherSince = tn; }
+                    } else if (r.screen == Vision.Screen.GAME) {   // phones: same digit check on the S23-layout frame (fewer false "outside the field")
+                        boolean[] sig = Vision.pollenTextS23(ro.px, ro.w, ro.h);
+                        int d = Vision.textDiff(pollenSig, sig);
+                        if (d > Math.max(10, sig.length / 400)) pollenChanged = tn;
+                        pollenSig = sig;
                     }
                     if (ro.tablet && tn - honeyRead > 2000) { honeyRead = tn; long hv = HoneyOcr.read(f.px, f.w, f.h); if (hv > 0) honeySeen(hv, tn); }
                     final int[] fpx0 = ro.px; final int fw0 = ro.w, fh0 = ro.h;

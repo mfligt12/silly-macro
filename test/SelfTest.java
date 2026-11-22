@@ -424,7 +424,8 @@ public class SelfTest {
               {"Xperia 5/10, Moto Edge 30 (21:9)", 2520, 1080}, {"Z Flip inner, Razr (22:9)", 2640, 1080},
               {"Pixel 9 Pro", 2856, 1280}, {"Pixel 8 Pro/9 Pro XL", 2992, 1344}, {"S22-S26 Ultra", 3088, 1440},
               {"Pixel 6 Pro/7 Pro", 3120, 1440}, {"S20/S21 Ultra, Note 20 Ultra", 3200, 1440}, {"OnePlus 10 Pro-13", 3216, 1440},
-              {"Xperia 1 III-VII (4K 21:9)", 3840, 1644}};
+              {"Xperia 1 III-VII (4K 21:9)", 3840, 1644}, {"Galaxy A 19.5:9 720p", 1560, 720},
+              {"Pixel Fold outer (17.4:9)", 2092, 1080}, {"Z Fold3-6 outer (24.5:9)", 2316, 904}};
           String[] fxs = {"s23_kb_turn0.png", "s23_pepper_field.png", "field_pinetree.png", "haste_x5.png", "hasteon1.png", "hasteoff1.png"};
           java.util.List<int[]> plPx = new java.util.ArrayList<>(); java.util.List<Vision.Result> fo = new java.util.ArrayList<>();
           for (String fx : fxs) { BufferedImage im = ImageIO.read(new File("test/fixtures/" + fx)); int[] q = im.getRGB(0, 0, 2340, 1080, null, 0, 2340); plPx.add(q); fo.add(Vision.analyze(q, 2340, 1080)); }
@@ -459,7 +460,9 @@ public class SelfTest {
           // the honey counter, then every reading must match the Tab S9 FE's
           Object[][] tabs = {{"Z Fold3-7 inner", 2176, 1812}, {"Pixel Fold inner", 2208, 1840}, {"Pixel 9/10 Pro Fold inner", 2152, 2076},
               {"OnePlus Open inner", 2440, 2268}, {"Tab S9 FE", 2304, 1440}, {"Tab S7/S8/S9/S10", 2560, 1600}, {"Tab A8/A9+", 1920, 1200},
-              {"Tab S9+/Ultra", 2800, 1752}, {"Pixel Tablet", 2560, 1600}, {"Lenovo/Xiaomi Pad 11 inch", 2000, 1200}};
+              {"Tab S9+/Ultra", 2800, 1752}, {"Pixel Tablet", 2560, 1600}, {"Lenovo/Xiaomi Pad 11 inch", 2000, 1200},
+              {"Tab A9 / A7 Lite 8.7 inch", 1340, 800}, {"Tab S9/S10 Ultra", 2960, 1848}, {"Xiaomi Pad 6/7", 2880, 1800},
+              {"OnePlus Pad (7:5)", 2800, 2000}, {"4:3 tablets", 2048, 1536}, {"16:9 phone 720p", 1280, 720}, {"16:9 phone 1080p", 1920, 1080}};
           String[] tfx = {"tab_field_middle.png", "tab_haste_x4.png", "tab_haste_x1.png", "tab_field_edge2.png", "tab_facing_hive.png"};
           int truns = 0, tbad = 0; StringBuilder twhy = new StringBuilder();
           for (Object[] d : tabs) {
@@ -474,7 +477,8 @@ public class SelfTest {
                   double u = Remap.calibrate(q, w, h); truns++;
                   Remap.uiCal = u > 0 ? u : 0;
                   Vision.Result r = Vision.analyze(Remap.apply(q, w, h));
-                  boolean ok = u > 0 && r.screen == o0.screen && Math.abs(r.pollen - o0.pollen) <= 3 && r.prompt == o0.prompt && r.haste == o0.haste && r.hasteSlot == o0.hasteSlot;
+                  // u == 0: the honey digits are too small to read there and the screen-height guess is used, which must read right too
+                  boolean ok = r.screen == o0.screen && Math.abs(r.pollen - o0.pollen) <= 3 && r.prompt == o0.prompt && r.haste == o0.haste && r.hasteSlot == o0.hasteSlot;
                   if (!ok) { tbad++; twhy.append(String.format(" | %s %dx%d %s: UI %.2f (expected %.2f) %s/%s bag %.0f/%.0f prompt %s/%s haste %d/%d", d[0], w, h, fx, u, k, r.screen, o0.screen, r.pollen, o0.pollen, r.prompt, o0.prompt, r.hasteSlot, o0.hasteSlot)); }
               }
           }
@@ -522,6 +526,17 @@ public class SelfTest {
               btnOk &= kind.equals(t[1]); btnR.append(' ').append(t[0].replace(".png", "")).append('=').append(kind);
           }
           if (n > 0) check(btnOk, "respawn buttons found by sight:" + btnR); }
+        { // phones: pollen coming in, read from the Pollen counter's digits (was tablet-only): 0 -> 14,432 is a change,
+          // the same 14,432 with the bees and scenery moving behind the box is not (live S23 frames)
+          File fa = new File("test/fixtures/s23_newhud_beam.png"), fb = new File("test/fixtures/s23_newhud_hive.png"), fc = new File("test/fixtures/s23_newhud_hive2.png");
+          if (fa.exists() && fb.exists() && fc.exists()) {
+              boolean[][] sg = new boolean[3][];
+              File[] fs = {fa, fb, fc};
+              for (int k = 0; k < 3; k++) { BufferedImage im = ImageIO.read(fs[k]); int iw = im.getWidth(), ih = im.getHeight(); sg[k] = Vision.pollenTextS23(im.getRGB(0, 0, iw, ih, null, 0, iw), iw, ih); }
+              int lim = Math.max(10, sg[0].length / 400), dChange = Vision.textDiff(sg[0], sg[1]), dSame = Vision.textDiff(sg[1], sg[2]);
+              check(dChange > lim && dSame <= lim, "phone pollen digits: 0 -> 14,432 differs by " + dChange + " px, same value with scenery moving " + dSame + " px (limit " + lim + ")");
+          }
+        }
         { // auto re-measure needs the counters found anywhere: they must be found on tablet and foldable screens too
           int found = 0, runs = 0; StringBuilder miss = new StringBuilder();
           for (Object[] d : new Object[][]{{2304, 1440}, {2176, 1812}, {2800, 1752}, {1920, 1200}})
