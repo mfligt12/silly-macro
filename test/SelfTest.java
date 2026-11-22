@@ -480,6 +480,16 @@ public class SelfTest {
           }
           Remap.uiCal = 0;
           check(tbad == 0, "tablets & foldables: " + tabs.length + " screen sizes x " + tfx.length + " frames = " + truns + " runs, " + (truns - tbad) + " read like the Tab S9 FE" + twhy); }
+        { // auto re-measure needs the counters found anywhere: they must be found on tablet and foldable screens too
+          int found = 0, runs = 0; StringBuilder miss = new StringBuilder();
+          for (Object[] d : new Object[][]{{2304, 1440}, {2176, 1812}, {2800, 1752}, {1920, 1200}})
+              for (String fx : new String[]{"tab_field_middle.png", "tab_haste_x4.png", "tab_facing_hive.png"}) {
+                  File ff = new File("test/fixtures/" + fx); if (!ff.exists()) continue;
+                  BufferedImage im = ImageIO.read(ff); int iw = im.getWidth(), ih = im.getHeight(), w = (int) d[0], h = (int) d[1];
+                  int[] q = tabletScreen(im.getRGB(0, 0, iw, ih, null, 0, iw), iw, ih, w, h);
+                  runs++; if (Remap.hudVisible(q, w, h)) found++; else miss.append(' ').append(w).append('x').append(h).append(' ').append(fx);
+              }
+          check(found == runs, "auto re-measure: Honey/Pollen counters found anywhere on " + found + "/" + runs + " tablet screens" + miss); }
         { // the game's own message names the field: Pine Tree Forest vs another field, read from the newest message
           String[][] msgWant = {{"tab_field_middle.png", "PINE_TREE"}, {"tab_field_edge2.png", "PINE_TREE"}, {"tab_roses_messages.png", "OTHER_FIELD"},
                              {"tab_field_night.png", "NONE"}, {"tab_field_wrong.png", "NONE"}, {"tab_under_tree.png", "NONE"}, {"tab_spawn_view.png", "NONE"}};

@@ -50,6 +50,15 @@ final class Engine implements Runnable {
                 || Moves.recorded("TO_FIELD").length == 0 || Moves.recorded("TO_HIVE").length == 0) return "Pattern/route data missing.";
         Vision.Result r = Monitor.fresh(SystemClock.uptimeMillis() - 1, 3000);
         if (r == null) return "No screen frames yet — is capture running?";
+        if (r.screen == Vision.Screen.UNKNOWN) {   // don't send people to a button: re-measure and wait for the HUD (up to 20 s)
+            MacroService.startWhy = "Reading this screen's Bee Swarm HUD…"; MacroService.startWhyAt = SystemClock.uptimeMillis();
+            Monitor.hurry();
+            for (long until = SystemClock.uptimeMillis() + 20_000; r.screen == Vision.Screen.UNKNOWN && SystemClock.uptimeMillis() < until; ) {
+                SystemClock.sleep(500);
+                Vision.Result q = Monitor.fresh(SystemClock.uptimeMillis() - 1, 1500); if (q != null) r = q;
+            }
+            MacroService.startWhy = null;
+        }
         if (r.screen != Vision.Screen.GAME || r.screenConf < p.minConfidence) {
             android.graphics.Point z = s.screen();
             if (z.y > z.x) return "Turn the device sideways: Bee Swarm must be in landscape.";
@@ -57,7 +66,8 @@ final class Engine implements Runnable {
                 return "Screen capture only sees a black screen. Settings → stop screen capture, then Home → 2 · Allow screen capture and pick \"Entire screen\" (not \"A single app\").";
             if (!Remap.tablet(z.x, z.y) && Remap.phoneCal == null)
                 return "Still measuring this phone's HUD (" + Monitor.calState + "). Stay in Bee Swarm with the Honey/Pollen counters showing for a few seconds, then press Start again.";
-            return "Bee Swarm HUD not recognized (" + r.screen + "). Close menus/pop-ups so the Honey/Pollen counters show, then try again. Settings → Your device shows what was measured.";
+            if (r.screen == Vision.Screen.MENU || r.screen == Vision.Screen.RESPAWN_DIALOG) return "The Roblox menu is open: close it, then press Start.";
+            return "Couldn't find Bee Swarm's Honey/Pollen counters at the top of the screen (" + Monitor.calState + "). Open Bee Swarm in landscape and press Start again. Settings → Your device shows what was measured.";
         }
         if (r.pollenConf < p.minConfidence) return "Backpack bar not readable.";
         s.arm();

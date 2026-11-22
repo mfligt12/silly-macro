@@ -55,6 +55,18 @@ final class Monitor {
         synchronized (calSamples) { calSamples.clear(); } synchronized (phoneSamples) { phoneSamples.clear(); }
         Remap.uiCal = 0; Remap.phoneCal = null; calTry = 0; calState = "not measured yet";
     }
+    /** Auto re-measure: the Honey/Pollen counters are on screen (found anywhere) but the HUD can't be read where it was
+     *  measured (UI size changed, rotated, a bad first measurement) -> measure again, no button needed. */
+    private static long unknownSince, lastAutoRecal;
+    static void hurry() { unknownSince = 1; lastAutoRecal = 0; }   // Start is waiting: re-measure on the next frame if needed
+    private static void autoRecalibrate(Profile p, Vision.Result r, CaptureService.Frame f, long now) {
+        if (r.screen != Vision.Screen.UNKNOWN || p.uiScale > 0) { unknownSince = 0; return; }
+        if (unknownSince == 0) { unknownSince = now; return; }
+        if (now - unknownSince < 5000 || now - lastAutoRecal < 20_000 || !Remap.hudVisible(f.px, f.w, f.h)) return;
+        lastAutoRecal = now; unknownSince = 0;
+        Log.add("screen: the Honey/Pollen counters are on screen but not where they were measured - measuring again");
+        recalibrate(); calState = "re-measuring automatically";
+    }
     private static void calibrateStep(Profile p, CaptureService.Frame f, long now) {
         if (p.uiScale > 0) { Remap.uiCal = p.uiScale / 100.0; calState = "set by hand: " + p.uiScale + "%"; return; }
         if (!Remap.tablet(f.w, f.h)) { phoneStep(f, now); return; }
@@ -137,6 +149,7 @@ final class Monitor {
                     Remap.Out ro = Remap.apply(f.px, f.w, f.h); remap = ro;
                     Vision.Result r = Vision.analyze(ro);
                     long tn = SystemClock.uptimeMillis();
+                    autoRecalibrate(p, r, f, tn);
                     if (ro.tablet && r.screen == Vision.Screen.GAME) {   // pollen counter digits changing = pollen coming in
                         boolean[] sig = Vision.pollenText(f.px, f.w, f.h);
                         int d = Vision.textDiff(pollenSig, sig);

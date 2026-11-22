@@ -71,6 +71,9 @@ public final class Remap {
     /** This phone's measured layout (null until measured; see Monitor). */
     public static volatile Phone phoneCal;
 
+    /** Bee Swarm's counters are on screen somewhere (any layout): the pills, or on tablets a readable honey counter. */
+    public static boolean hudVisible(int[] px, int w, int h) { return locatePhone(px, w, h) != null || (tablet(w, h) && calibrate(px, w, h) > 0); }
+
     /** Find the Honey/Pollen pills (and the menu button) in a game frame. null when they aren't both there. */
     public static Phone locatePhone(int[] px, int w, int h) {
         int s = Math.max(2, h / 540), gw = w / s, gh = (int) (h * 0.3) / s;   // coarse grid (never finer than 2 px: white bridges glue the pills to bright scenery) finds the pieces; edges refined below
@@ -81,20 +84,51 @@ public final class Remap {
             m[y * gw + x] = mn > 185 && mx - mn < 45;
         }
         java.util.List<int[]> comps = new java.util.ArrayList<>();   // {x0, x1, y0, y1, cells} in screen px
-        int[] q = new int[gw * gh]; boolean[] seen = new boolean[gw * gh];
+        int[] q = new int[gw * gh]; boolean[] seen = new boolean[gw * gh]; int[] rowN = new int[gh];
         for (int i = 0; i < m.length; i++) {
             if (!m[i] || seen[i]) continue;
             int qa = 0, qb = 0, x0 = gw, x1 = 0, y0 = gh, y1 = 0, n = 0;
             q[qb++] = i; seen[i] = true;
             while (qa < qb) {
-                int c = q[qa++], cx = c % gw, cy = c / gw; n++;
+                int c = q[qa++], cx = c % gw, cy = c / gw; n++; rowN[cy]++;
                 x0 = Math.min(x0, cx); x1 = Math.max(x1, cx); y0 = Math.min(y0, cy); y1 = Math.max(y1, cy);
                 if (cx > 0 && m[c - 1] && !seen[c - 1]) { seen[c - 1] = true; q[qb++] = c - 1; }
                 if (cx < gw - 1 && m[c + 1] && !seen[c + 1]) { seen[c + 1] = true; q[qb++] = c + 1; }
                 if (cy > 0 && m[c - gw] && !seen[c - gw]) { seen[c - gw] = true; q[qb++] = c - gw; }
                 if (cy < gh - 1 && m[c + gw] && !seen[c + gw]) { seen[c + gw] = true; q[qb++] = c + gw; }
             }
-            if (n >= 20) comps.add(new int[]{x0 * s, (x1 + 1) * s, y0 * s, (y1 + 1) * s, n});
+            // height from the rows that are mostly filled: white scenery touching a pill's edge made it look too tall
+            // (tablets, Pine Tree: 5.2:1 instead of 8.6:1), while its few cells don't fill those rows
+            int top = -1, bot = -1, nFull = 0; boolean[] full = new boolean[y1 - y0 + 1];
+            for (int y = y0; y <= y1; y++) { if (rowN[y] >= 0.6 * (x1 - x0 + 1)) { if (top < 0) top = y; bot = y; full[y - y0] = true; nFull++; } rowN[y] = 0; }
+            if (n < 20) continue;
+            if (top < 0) { comps.add(new int[]{x0 * s, (x1 + 1) * s, y0 * s, (y1 + 1) * s, n}); continue; }
+            // a pill is white in most of its mostly-white rows (its margins and label; the number box and text are dark);
+            // scenery glued to its sides isn't: keep runs of columns white in at least half of those rows
+            int[] colN = new int[x1 - x0 + 1], colAll = new int[x1 - x0 + 1];
+            for (int k = 0; k < qb; k++) {
+                int c = q[k], cy = c / gw; if (cy < top || cy > bot) continue;
+                colAll[c % gw - x0]++; if (full[cy - y0]) colN[c % gw - x0]++;
+            }
+            int rows = bot - top + 1, needN = Math.max(1, (nFull + 1) / 2);
+            for (int x = 0; x <= x1 - x0; ) {
+                if (colN[x] < needN) { x++; continue; }
+                int e = x; while (e + 1 <= x1 - x0 && colN[e + 1] >= needN) e++;
+                // the rounded ends reach past the margins by at most half the pill's height; anything further is scenery
+                int r = (rows + 1) / 2, xs = x, ee = e;
+                while (xs - 1 >= 0 && x - (xs - 1) <= r && colAll[xs - 1] > 0) xs--;
+                while (e + 1 <= x1 - x0 && e + 1 - ee <= r && colAll[e + 1] > 0) e++;
+                int xe0 = x; x = xs;
+                int[] cmp = {(x0 + x) * s, (x0 + e + 1) * s, top * s, (bot + 1) * s, (e - x + 1) * (bot - top + 1)};
+                double asp = (cmp[1] - cmp[0]) / (double) (cmp[3] - cmp[2]);
+                if (asp > 13 && asp < 24) {   // both pills as one run (they touch on foldables at a 3 px grid): split where they meet
+                    int best = -1; double bv = 1e9;
+                    for (int xx = x; xx <= e; xx++) { double v = colN[xx] + Math.abs((x0 + xx) * s - (cmp[0] + cmp[1]) / 2.0) / (8.0 * s); if (v < bv) { bv = v; best = xx; } }
+                    int c2 = (x0 + best) * s;
+                    comps.add(new int[]{cmp[0], c2, cmp[2], cmp[3], cmp[4] / 2}); comps.add(new int[]{c2, cmp[1], cmp[2], cmp[3], cmp[4] / 2});
+                } else if (cmp[4] >= 20) comps.add(cmp);
+                x = Math.max(xe0, e) + 1;
+            }
         }
         int[] bl = null, br = null; double best = 0;
         for (int[] a : comps) for (int[] b : comps) {
