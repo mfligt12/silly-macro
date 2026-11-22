@@ -415,6 +415,71 @@ public class SelfTest {
           }
           Remap.phoneCal = null;
           check(bad == 0 && runs >= 40 && skipped <= 5, "other phones: HUD found and every reading matches the S23 on " + (runs - bad) + "/" + runs + " screen shapes (" + skipped + " bright-wall frames skipped)" + why); }
+        { // every phone screen size on the supported list (Android 13+): HUD found, every reading the same as on the S23,
+          // at the expected UI scale and ±15%, with no camera-cutout inset and with a large one
+          Object[][] phones = {
+              {"720p: Galaxy A03-A07, Moto E13-15/G04-G06", 1600, 720}, {"Moto G04s/G24 (20.1:9)", 1612, 720},
+              {"Pixel 4/4 XL (19:9)", 2280, 1080}, {"S23, Pixel 4a/5", 2340, 1080}, {"Pixel 6/7/8/9a, Galaxy A/M/F, Moto G", 2400, 1080},
+              {"Galaxy A5x/S2x FE, Nord CE", 2408, 1080}, {"OnePlus Nord, Moto Edge", 2412, 1080}, {"ROG Phone 6-9", 2448, 1080},
+              {"Xperia 5/10, Moto Edge 30 (21:9)", 2520, 1080}, {"Z Flip inner, Razr (22:9)", 2640, 1080},
+              {"Pixel 9 Pro", 2856, 1280}, {"Pixel 8 Pro/9 Pro XL", 2992, 1344}, {"S22-S26 Ultra", 3088, 1440},
+              {"Pixel 6 Pro/7 Pro", 3120, 1440}, {"S20/S21 Ultra, Note 20 Ultra", 3200, 1440}, {"OnePlus 10 Pro-13", 3216, 1440},
+              {"Xperia 1 III-VII (4K 21:9)", 3840, 1644}};
+          String[] fxs = {"s23_kb_turn0.png", "s23_pepper_field.png", "field_pinetree.png", "haste_x5.png", "hasteon1.png", "hasteoff1.png"};
+          java.util.List<int[]> plPx = new java.util.ArrayList<>(); java.util.List<Vision.Result> fo = new java.util.ArrayList<>();
+          for (String fx : fxs) { BufferedImage im = ImageIO.read(new File("test/fixtures/" + fx)); int[] q = im.getRGB(0, 0, 2340, 1080, null, 0, 2340); plPx.add(q); fo.add(Vision.analyze(q, 2340, 1080)); }
+          int runs = 0, bad = 0; StringBuilder why = new StringBuilder(); java.util.Set<String> devBad = new java.util.TreeSet<>();
+          for (Object[] d : phones) {
+              int w = (int) d[1], h = (int) d[2];
+              for (double km : new double[]{0.85, 1.0, 1.15}) for (double inset : new double[]{-100 * h / 1080.0, 0, 40 * h / 1080.0}) {
+                double k = h / 1080.0 * km;
+                if (inset + 555 * k > w / 2.0 - 6 * k - 556 * k) continue;   // Roblox's top-left buttons would sit on the Honey counter: no real phone
+                // calibrate like the app: the layout is the median of readings from several frames (one bright frame can fool one reading)
+                java.util.List<int[]> qs = new java.util.ArrayList<>(); java.util.List<Remap.Phone> reads = new java.util.ArrayList<>();
+                for (int i = 0; i < fxs.length; i++) { int[] q = phoneScreen(plPx.get(i), 2340, 1080, w, h, k, inset); qs.add(q); Remap.Phone p1 = Remap.locatePhone(q, w, h); if (p1 != null) reads.add(p1); }
+                Remap.Phone ph = null;
+                if (reads.size() >= 3) {
+                    java.util.function.ToDoubleFunction<Remap.Phone>[] fs = new java.util.function.ToDoubleFunction[]{(java.util.function.ToDoubleFunction<Remap.Phone>) p -> p.k, (java.util.function.ToDoubleFunction<Remap.Phone>) p -> p.cx, (java.util.function.ToDoubleFunction<Remap.Phone>) p -> p.top, (java.util.function.ToDoubleFunction<Remap.Phone>) p -> p.inset};
+                    double[] med = new double[4];
+                    for (int j = 0; j < 4; j++) { final int jj = j; double[] v = reads.stream().mapToDouble(fs[jj]).sorted().toArray(); med[j] = v[v.length / 2]; }
+                    ph = new Remap.Phone(med[0], med[1], med[2], med[3]);
+                }
+                for (int i = 0; i < fxs.length; i++) {
+                  int[] q = qs.get(i); runs++;
+                  Vision.Result o0 = fo.get(i), r = null;
+                  if (ph != null) { Remap.phoneCal = ph; r = Vision.analyze(Remap.apply(q, w, h)); }
+                  boolean ok = r != null && r.screen == o0.screen && Math.abs(r.pollen - o0.pollen) <= 3 && r.prompt == o0.prompt && r.haste == o0.haste && r.hasteSlot == o0.hasteSlot && r.shiftLock == o0.shiftLock;
+                  if (!ok) { bad++; if (devBad.add((String) d[0])) why.append(String.format(" | %s %dx%d k%.2f inset %.0f %s: %s", d[0], w, h, k, inset, fxs[i], ph == null ? "HUD not found" : String.format("%s bag %.0f/%.0f prompt %s/%s haste %d/%d lock %d/%d (%s)", r.screen, r.pollen, o0.pollen, r.prompt, o0.prompt, r.hasteSlot, o0.hasteSlot, r.shiftLock, o0.shiftLock, ph))); }
+                }
+              }
+          }
+          Remap.phoneCal = null;
+          check(bad == 0, "phone list: " + phones.length + " screen sizes x 3 UI scales x 3 cutout insets x " + fxs.length + " frames = " + runs + " runs, " + (runs - bad) + " read like the S23" + why); }
+        { // foldables' inner screens and other tablets (Android 13+) use the tablet reader: the UI scale is measured from
+          // the honey counter, then every reading must match the Tab S9 FE's
+          Object[][] tabs = {{"Z Fold3-7 inner", 2176, 1812}, {"Pixel Fold inner", 2208, 1840}, {"Pixel 9/10 Pro Fold inner", 2152, 2076},
+              {"OnePlus Open inner", 2440, 2268}, {"Tab S9 FE", 2304, 1440}, {"Tab S7/S8/S9/S10", 2560, 1600}, {"Tab A8/A9+", 1920, 1200},
+              {"Tab S9+/Ultra", 2800, 1752}, {"Pixel Tablet", 2560, 1600}, {"Lenovo/Xiaomi Pad 11 inch", 2000, 1200}};
+          String[] tfx = {"tab_field_middle.png", "tab_haste_x4.png", "tab_haste_x1.png", "tab_field_edge2.png", "tab_facing_hive.png"};
+          int truns = 0, tbad = 0; StringBuilder twhy = new StringBuilder();
+          for (Object[] d : tabs) {
+              int w = (int) d[1], h = (int) d[2];
+              for (String fx : tfx) {
+                  File ff = new File("test/fixtures/" + fx); if (!ff.exists()) continue;
+                  BufferedImage im = ImageIO.read(ff); int iw = im.getWidth(), ih = im.getHeight();
+                  int[] px = im.getRGB(0, 0, iw, ih, null, 0, iw);
+                  Remap.uiCal = 0; Vision.Result o0 = Vision.analyze(Remap.apply(px, iw, ih));
+                  double k = h / (double) ih;
+                  int[] q = tabletScreen(px, iw, ih, w, h, o0.prompt != Vision.Prompt.NONE);   // Roblox anchors: buff row at the left edge, counters centred
+                  double u = Remap.calibrate(q, w, h); truns++;
+                  Remap.uiCal = u > 0 ? u : 0;
+                  Vision.Result r = Vision.analyze(Remap.apply(q, w, h));
+                  boolean ok = u > 0 && r.screen == o0.screen && Math.abs(r.pollen - o0.pollen) <= 3 && r.prompt == o0.prompt && r.haste == o0.haste && r.hasteSlot == o0.hasteSlot;
+                  if (!ok) { tbad++; twhy.append(String.format(" | %s %dx%d %s: UI %.2f (expected %.2f) %s/%s bag %.0f/%.0f prompt %s/%s haste %d/%d", d[0], w, h, fx, u, k, r.screen, o0.screen, r.pollen, o0.pollen, r.prompt, o0.prompt, r.hasteSlot, o0.hasteSlot)); }
+              }
+          }
+          Remap.uiCal = 0;
+          check(tbad == 0, "tablets & foldables: " + tabs.length + " screen sizes x " + tfx.length + " frames = " + truns + " runs, " + (truns - tbad) + " read like the Tab S9 FE" + twhy); }
         { // the game's own message names the field: Pine Tree Forest vs another field, read from the newest message
           String[][] msgWant = {{"tab_field_middle.png", "PINE_TREE"}, {"tab_field_edge2.png", "PINE_TREE"}, {"tab_roses_messages.png", "OTHER_FIELD"},
                              {"tab_field_night.png", "NONE"}, {"tab_field_wrong.png", "NONE"}, {"tab_under_tree.png", "NONE"}, {"tab_spawn_view.png", "NONE"}};
@@ -642,6 +707,57 @@ public class SelfTest {
             out[y * ow + x] = px[(int) sy * w + (int) sx];
         }
         return out;
+    }
+
+    /** An S23 game frame as phone (w x h) would draw it, the way Roblox anchors its HUD: the world scaled to the
+     *  height and centred; Honey/Pollen pills, bar and hive prompt centred at UI scale k; the menu button, buff row
+     *  and shift lock from the left edge at k plus a camera-cutout inset. */
+    static int[] phoneScreen(int[] px, int w0, int h0, int w, int h, double k, double inset) {
+        int[] out = new int[w * h];
+        java.util.Arrays.fill(out, 0xFF3CA03C);
+        double s = h / (double) h0, wx0 = (w - w0 * s) / 2;
+        int[] world = px.clone();   // the world without the HUD (a real phone draws each HUD piece once, at its anchor)
+        for (int y = 0; y < 300; y++) for (int x = 0; x < 1900; x++) world[y * w0 + x] = 0xFF3CA03C;
+        for (int y = 590; y < 810; y++) for (int x = 40; x < 260; x++) world[y * w0 + x] = 0xFF3CA03C;
+        paste(world, w0, h0, 0, 0, w0, h0, out, w, h, wx0, 0, s);                                     // world
+        double cx = w / 2.0 - 6 * k, top = 66 * k;                                                   // S23: pills meet at 1164, top 66
+        // drawn in Roblox's order: buff row, then the centred pills/prompt over it, then the top-left buttons; a HUD
+        // piece never erases another (pasting the centre band last used to wipe the menu button at big insets)
+        paste(px, w0, h0, 0, 160, 1900, 250, out, w, h, inset + 0 * k, top + (160 - 66) * k, k);     // buff row (left)
+        paste(px, w0, h0, 560, 0, 1900, 160, out, w, h, cx + (560 - 1164) * k, top - 66 * k, k);    // pills, bar (centre)
+        Vision.Result pr = Vision.analyze(px, w0, h0);
+        if (pr.prompt != Vision.Prompt.NONE)   // the prompt is only there when the game shows one
+            paste(px, w0, h0, 760, 160, 1560, 300, out, w, h, cx + (760 - 1164) * k, top + (160 - 66) * k, k);   // hive prompt (centre)
+        paste(px, w0, h0, 0, 0, 560, 150, out, w, h, inset, top - 66 * k, k);                        // menu button (left)
+        paste(px, w0, h0, 40, 590, 260, 810, out, w, h, inset + 40 * k, h / 2.0 + 50 * k, k);       // shift lock (left, middle)
+        return out;
+    }
+    /** A Tab S9 FE frame (2304x1440) as another tablet/foldable (w x h) draws it, with Roblox's anchors at UI scale
+     *  u = h/1440: world scaled to the height and centred; buff row from the left edge; pills/bar and hive prompt
+     *  centred; shift lock left/middle. */
+    static int[] tabletScreen(int[] px, int w0, int h0, int w, int h) { return tabletScreen(px, w0, h0, w, h, true); }
+    /** Only the HUD pieces themselves are moved: wider rects would paint the centred strip over the left-anchored buff row
+     *  on near-square foldables, which Roblox never does. The prompt (drawn over the buffs) only when the frame has one. */
+    static int[] tabletScreen(int[] px, int w0, int h0, int w, int h, boolean prompt) {
+        double u = h / (double) h0, cx0 = w0 / 2.0, cx = w / 2.0;
+        int[] world = px.clone();
+        for (int y = 0; y < 240; y++) for (int x = 0; x < w0; x++) world[y * w0 + x] = 0xFF3CA03C;      // HUD rows drawn separately
+        for (int y = 830; y < 950; y++) for (int x = 0; x < 110; x++) world[y * w0 + x] = 0xFF3CA03C;
+        int[] out = new int[w * h]; java.util.Arrays.fill(out, 0xFF3CA03C);
+        paste(world, w0, h0, 0, 0, w0, h0, out, w, h, (w - w0 * u) / 2, 0, u);
+        paste(px, w0, h0, 0, 95, 2000, 175, out, w, h, 0, 95 * u, u);                                     // buff row (left)
+        paste(px, w0, h0, 560, 0, 1720, 95, out, w, h, cx + (560 - cx0) * u, 0, u);                        // pills, bar (centre)
+        if (prompt) paste(px, w0, h0, 846, 106, 1458, 216, out, w, h, cx + (846 - cx0) * u, 106 * u, u);    // hive prompt boxes (centre)
+        paste(px, w0, h0, 0, 830, 110, 950, out, w, h, 0, h / 2.0 + (830 - h0 / 2.0) * u, u);              // shift lock (left, middle)
+        return out;
+    }
+    /** Copy S23 rect (x0,y0)-(x1,y1) to (dx,dy) on the target at scale k (nearest neighbour). */
+    static void paste(int[] px, int w0, int h0, int x0, int y0, int x1, int y1, int[] out, int w, int h, double dx, double dy, double k) {
+        for (int y = (int) Math.ceil(dy); y < dy + (y1 - y0) * k && y < h; y++) for (int x = (int) Math.ceil(dx); x < dx + (x1 - x0) * k && x < w; x++) {
+            if (x < 0 || y < 0) continue;
+            int sx = x0 + (int) ((x - dx) / k), sy = y0 + (int) ((y - dy) / k);
+            if (sx >= 0 && sy >= 0 && sx < w0 && sy < h0) out[y * w + x] = px[sy * w0 + sx];
+        }
     }
 
     /** The world slid by (dx, dy) while the HUD and the character stay put (what drift looks like on screen);

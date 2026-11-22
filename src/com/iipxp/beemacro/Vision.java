@@ -56,7 +56,7 @@ public final class Vision {
 
     /** Frame from any supported device, already brought to the S23 layout by Remap. */
     public static Result analyze(Remap.Out o) {
-        Result r = analyze(o.px, o.w, o.h);
+        Result r = analyze(o.px, o.w, o.h, o.tablet);
         if (o.tablet) {
             // the 4/5/7 templates are reliable when they match; anything else goes to the general digit reader
             if (r.haste && r.hasteStacks <= 1) {
@@ -71,7 +71,8 @@ public final class Vision {
         return r;
     }
 
-    public static Result analyze(int[] px, int w, int h) {
+    public static Result analyze(int[] px, int w, int h) { return analyze(px, w, h, false); }
+    static Result analyze(int[] px, int w, int h, boolean tablet) {
         Result res = new Result(); res.w = w; res.h = h;
         if (w < h) { res.screen = Screen.UNKNOWN; res.screenConf = 0.9; return res; } // portrait: not Roblox gameplay
         long sum = 0; int n = 0;
@@ -98,7 +99,7 @@ public final class Vision {
         else if (hud >= 0.75) { res.screen = Screen.GAME; res.screenConf = hud; }
         else { res.screen = Screen.UNKNOWN; res.screenConf = 1 - hud; }
 
-        if (res.screen == Screen.GAME) { pollen(px, w, h, res); prompt(px, w, h, res); res.shiftLock = shiftLock(px, w, h); res.field = field(px, w, h); double[] hm = hasteMatch(px, w, h); int hs = (int) hm[0]; res.hasteSlot = hs; res.hasteConf = hm[1]; res.haste = hs >= 0; res.coconutHaste = hm[2] >= 2; res.hasteStacks = hs < 0 ? 0 : hasteStacks(px, w, h, hs); }
+        if (res.screen == Screen.GAME) { pollen(px, w, h, res); prompt(px, w, h, res); res.shiftLock = shiftLock(px, w, h); res.field = field(px, w, h); double[] hm = hasteMatch(px, w, h, tablet); int hs = (int) hm[0]; res.hasteSlot = hs; res.hasteConf = hm[1]; res.haste = hs >= 0; res.coconutHaste = hm[2] >= 2; res.hasteStacks = hs < 0 ? 0 : hasteStacks(px, w, h, hs); }
         return res;
     }
 
@@ -360,20 +361,27 @@ public final class Vision {
 
     public static int hasteSlot(int[] px, int w, int h) { return (int) hasteMatch(px, w, h)[0]; }
     /** {first slot or -1, its share of the running-figure mask that matched (the detection score), number of Haste icons}. */
-    public static double[] hasteMatch(int[] px, int w, int h) {
+    public static double[] hasteMatch(int[] px, int w, int h) { return hasteMatch(px, w, h, false); }
+    static double[] hasteMatch(int[] px, int w, int h, boolean tablet) {
         double sx = w / 2340.0, sy = h / 1080.0;
         double[] first = null; int n = 0;
         for (int k = 0; 100 + 60 * k + 58 < 2340; k++) {
-            int x0 = 100 + 60 * k, inMask = 0, inHit = 0, out = 0, outHit = 0;
-            for (int r = 0; r < HASTE_MASK.length; r++) for (int c = 0; c < HASTE_MASK[r].length(); c++) {
-                int x = (int) ((x0 + 3 + 2 * c) * sx), y = (int) ((182 + 2 * r) * sy);
-                if (x >= w || y >= h) continue;
-                int p = px[y * w + x], mx = Math.max(r(p), Math.max(g(p), b(p))), mn = Math.min(r(p), Math.min(g(p), b(p)));
-                boolean gray = mx - mn < 14 && mx >= 95 && mx <= 170;
-                if (HASTE_MASK[r].charAt(c) == '#') { inMask++; if (gray) inHit++; } else { out++; if (gray) outHit++; }
+            boolean hit = false; double score = 0;
+            // ±2 px around the slot: other phones are rebuilt from a measured layout that can be a pixel or two off;
+            // tablet frames (remapped tiles) put the icon 2-3 px right and 5 px low (measured on 8 screen sizes)
+            for (int sh = tablet ? 6 : 0; sh < (tablet ? 12 : 6) && !hit; sh++) {
+                int dx = (sh % 6 == 0 ? 0 : (sh % 6) % 2 == 1 ? ((sh % 6) + 1) / 2 : -((sh % 6) / 2)), dy = sh < 6 ? 0 : 5;
+                int x0 = 100 + 60 * k + dx, inMask = 0, inHit = 0, out = 0, outHit = 0;
+                for (int r = 0; r < HASTE_MASK.length; r++) for (int c = 0; c < HASTE_MASK[r].length(); c++) {
+                    int x = (int) ((x0 + 3 + 2 * c) * sx), y = (int) ((182 + dy + 2 * r) * sy);
+                    if (x < 0 || x >= w || y >= h) continue;
+                    int p = px[y * w + x], mx = Math.max(r(p), Math.max(g(p), b(p))), mn = Math.min(r(p), Math.min(g(p), b(p)));
+                    boolean gray = mx - mn < 14 && mx >= 95 && mx <= 170;
+                    if (HASTE_MASK[r].charAt(c) == '#') { inMask++; if (gray) inHit++; } else { out++; if (gray) outHit++; }
+                }
+                if (inMask > 0 && inHit >= (tablet ? (k < 12 ? 0.55 : 0.65) : (k < 12 ? 0.4 : 0.6)) * inMask && outHit <= 0.25 * out) { hit = true; score = inHit / (double) inMask; }   // tablet (remapped, aligned): Haste 0.75-0.95 on 8 screen sizes, scenery ≤ 0.42; far slots (scenery behind) need more
             }
-            if (inMask > 0 && inHit >= (k < 12 ? 0.4 : 0.6) * inMask && outHit <= 0.25 * out)   // tablet icons are rescaled: true slot 0.44-0.51, others ≤ 0.02; far slots (scenery behind) need more
-            { n++; if (first == null) first = new double[]{k, inHit / (double) inMask}; }
+            if (hit) { n++; if (first == null) first = new double[]{k, score}; }
         }
         return first == null ? new double[]{-1, 0, 0} : new double[]{first[0], first[1], n};
     }
@@ -381,16 +389,25 @@ public final class Vision {
     /** Roblox mobile shift-lock button ring (centre ≈ (147,700) on 2340x1080): blue when on, light gray when off.
      *  Returns 1 on, 0 off, -1 unknown. */
     public static int shiftLock(int[] px, int w, int h) {
+        // the ring is thin: on phones rebuilt from a measured layout it can sit a few px off, so look around it
+        int best = -1;
+        for (int[] o : new int[][]{{0, 0}, {-3, 0}, {3, 0}, {0, -3}, {0, 3}, {-5, 0}, {5, 0}}) {
+            int v = shiftLockAt(px, w, h, o[0], o[1]);
+            if (v >= 0) return v;
+        }
+        return best;
+    }
+    static int shiftLockAt(int[] px, int w, int h, int ox, int oy) {
         int on = 0, off = 0, n = 0;
         for (int dx : new int[]{-22, 23}) for (int dy = -3; dy <= 3; dy++) for (int ddx = -1; ddx <= 1; ddx++) {
-            int p = at(px, w, h, 147 / 2340.0, 700 / 1080.0, (int) Math.round((dx + ddx) * w / 2340.0), (int) Math.round(dy * h / 1080.0));
+            int p = at(px, w, h, 147 / 2340.0, 700 / 1080.0, (int) Math.round((dx + ddx + ox) * w / 2340.0), (int) Math.round((dy + oy) * h / 1080.0));
             n++;
             if (b(p) > 170 && r(p) < 90 && g(p) > 110) on++;
             else if (r(p) > 185 && g(p) > 185 && b(p) > 185 && sat(p) < 20) off++;
             else {
                 // The off ring is translucent white: over the yellow hive floor it's yellowish (measured live), so
                 // compare with the background just outside the ring (10 px further out): clearly lighter = off ring.
-                int q = at(px, w, h, 147 / 2340.0, 700 / 1080.0, (int) Math.round((dx + (dx < 0 ? -10 : 10) + ddx) * w / 2340.0), (int) Math.round(dy * h / 1080.0));
+                int q = at(px, w, h, 147 / 2340.0, 700 / 1080.0, (int) Math.round((dx + (dx < 0 ? -10 : 10) + ddx + ox) * w / 2340.0), (int) Math.round((dy + oy) * h / 1080.0));
                 if (lum(p) >= lum(q) + 60 && !(b(p) > r(p) + 60)) off++;   // total brightness: bright bg channels are already at 255
             }
         }

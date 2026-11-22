@@ -66,13 +66,14 @@ public final class HoneyOcr {
         }
         // the "(+N/sec)" rate follows after a wide gap: keep only the first block of text
         for (int k = 1; k < runs.size(); k++) if (runs.get(k)[0] - runs.get(k - 1)[1] > 16 * sx) { runs = new ArrayList<>(runs.subList(0, k)); break; }
-        int maxH = 0; List<int[]> boxes = new ArrayList<>();
+        int maxH = 0, minTop = y1; List<int[]> boxes = new ArrayList<>();
         for (int[] r : runs) {
             int top = y1, bot = y0;
             for (int y = y0; y < y1; y++) for (int x = r[0]; x <= r[1]; x++) if (fill(px[y * w + x])) { top = Math.min(top, y); bot = Math.max(bot, y); }
-            boxes.add(new int[]{r[0], r[1], top, bot, 1}); maxH = Math.max(maxH, bot - top + 1);
+            boxes.add(new int[]{r[0], r[1], top, bot, 1}); maxH = Math.max(maxH, bot - top + 1); minTop = Math.min(minTop, top);
         }
-        for (int[] b : boxes) if (b[3] - b[2] + 1 < 0.6 * maxH) b[4] = 0;
+        // a comma starts low (at u 1.22 it is 15/25 = 60% of a digit's height, so height alone can't tell)
+        for (int[] b : boxes) if (b[3] - b[2] + 1 < 0.6 * maxH || b[2] - minTop > 0.4 * maxH) b[4] = 0;
         return boxes;
     }
 
@@ -91,7 +92,7 @@ public final class HoneyOcr {
                 double sc = same / (double) (GW * GH);
                 if (sc > bs) { second = bs; bs = sc; best = d; } else if (sc > second) second = sc;
             }
-            if (bs < 0.82 || bs - second < 0.04) return -1;
+            if (bs < 0.80 || bs - second < 0.04) return -1;   // 0.80: big foldables (UI 1.58) score a "1" at 0.81
             s.append(best); group++;
         }
         if (s.length() == 0 || (first ? group > 3 : group != 3) || s.length() > 18) return -1;

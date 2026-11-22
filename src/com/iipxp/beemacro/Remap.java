@@ -67,13 +67,13 @@ public final class Remap {
         double leftX(double x) { return inset + x * k; }              // left anchored (menu button, buff row, shift lock)
         @Override public String toString() { return String.format(java.util.Locale.US, "scale %.0f%%, centre %.0f, top %.0f, inset %.0f", k * 100, cx, top, inset); }
     }
-    static final double S23_CX = 1164, S23_TOP = 66, S23_PILL_W = 550, S23_MENU_X0 = 182, S23_MENU_CY = 102, S23_MENU_W = 62;
+    static final double S23_SPAN = 1112, S23_CX = 1164, S23_TOP = 66, S23_PILL_W = 550, S23_MENU_X0 = 182, S23_MENU_CY = 102, S23_MENU_W = 62;
     /** This phone's measured layout (null until measured; see Monitor). */
     public static volatile Phone phoneCal;
 
     /** Find the Honey/Pollen pills (and the menu button) in a game frame. null when they aren't both there. */
     public static Phone locatePhone(int[] px, int w, int h) {
-        int s = Math.max(1, h / 540), gw = w / s, gh = (int) (h * 0.3) / s;
+        int s = Math.max(2, h / 540), gw = w / s, gh = (int) (h * 0.3) / s;   // coarse grid (never finer than 2 px: white bridges glue the pills to bright scenery) finds the pieces; edges refined below
         boolean[] m = new boolean[gw * gh];
         for (int y = 0; y < gh; y++) for (int x = 0; x < gw; x++) {
             int p = px[(y * s) * w + x * s], r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
@@ -109,14 +109,55 @@ public final class Remap {
             if (score > best) { best = score; bl = a; br = b; }
         }
         if (bl == null) return null;
-        double k = ((bl[1] - bl[0]) + (br[1] - br[0])) / 2.0 / S23_PILL_W, cx = (bl[1] + br[0]) / 2.0, top = (bl[2] + br[2]) / 2.0;
-        double inset = 0;   // the menu button (white, ~62 px square on the S23) gives the left inset; the S23's if not seen
+        // exact edges at full resolution (a 2 px grid left the buff row 2-3 px off: Haste in slot 24 was missed)
+        int ry0 = bl[2] + (bl[3] - bl[2]) / 4, ry1 = bl[3] - (bl[3] - bl[2]) / 4;
+        double lx0 = edge(px, w, h, bl[0], ry0, ry1, +1, s), lx1 = edge(px, w, h, bl[1] - 1, ry0, ry1, -1, s);
+        double rx0 = edge(px, w, h, br[0], ry0, ry1, +1, s), rx1 = edge(px, w, h, br[1] - 1, ry0, ry1, -1, s);
+        // scale from the two pills' outer span (1,112 px on the S23): a few px of edge error is ~0.3%, not the 1-2% of
+        // one pill's width - which mattered: 1% moves buff slot 24 (Haste) by 15 px
+        double k = (rx1 - lx0) / S23_SPAN, cx = (lx1 + rx0) / 2.0, top = topEdge(px, w, h, (int) ((lx0 + lx1) / 2), bl[2], s);
+        // bright scenery touching one pill makes it look wider (never narrower): if the two disagree, trust the narrower
+        double kl = (lx1 - lx0) / S23_PILL_W, kr = (rx1 - rx0) / S23_PILL_W;
+        if (Math.abs(kl - kr) > 0.02 * Math.min(kl, kr)) k = Math.min(kl, kr);
+        // Left inset (camera cutout) from Roblox's top-left buttons: the white menu "≡" (62 px on the S23, x 182) and the
+        // next white icon 300 px to its right. The pair pins it; a single lookalike blob doesn't (live test: 30-80 px off).
+        java.util.List<int[]> btn = new java.util.ArrayList<>();
         for (int[] c : comps) {
             double cw = c[1] - c[0], ch = c[3] - c[2], cy = (c[2] + c[3]) / 2.0;
-            if (Math.abs(cw - S23_MENU_W * k) < 0.35 * S23_MENU_W * k && Math.abs(ch - 60 * k) < 0.35 * 60 * k
-                    && Math.abs(cy - (top + (S23_MENU_CY - S23_TOP) * k)) < 20 * k && c[1] < cx - 500 * k) { inset = c[0] - S23_MENU_X0 * k; break; }
+            if (Math.abs(cy - (top + (S23_MENU_CY - S23_TOP) * k)) < 22 * k && c[1] < cx - 400 * k && cw > 20 * k && cw < 95 * k && ch > 20 * k && ch < 95 * k) btn.add(c);
         }
-        return new Phone(k, cx, top, inset);
+        double inset = Double.NaN;
+        for (int[] a : btn) for (int[] b : btn) {
+            if (a == b || Math.abs((b[0] - a[0]) - 300 * k) > 0.06 * 300 * k) continue;
+            if (Math.abs((a[1] - a[0]) - S23_MENU_W * k) > 0.3 * S23_MENU_W * k) continue;   // the left one is the menu button
+            double in = edge(px, w, h, a[0], a[2], a[3], +1, s) - S23_MENU_X0 * k;
+            if (Double.isNaN(inset) || Math.abs(in) < Math.abs(inset)) inset = in;
+        }
+        if (Double.isNaN(inset))   // no pair: the menu-sized button nearest the S23 place
+            for (int[] c : btn) {
+                if (Math.abs((c[1] - c[0]) - S23_MENU_W * k) > 0.3 * S23_MENU_W * k) continue;
+                double in = edge(px, w, h, c[0], c[2], c[3], +1, s) - S23_MENU_X0 * k;
+                if (Double.isNaN(inset) || Math.abs(in) < Math.abs(inset)) inset = in;
+            }
+        return new Phone(k, cx, top, Double.isNaN(inset) ? 0 : inset);
+    }
+
+    static boolean white(int p) { int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255, mn = Math.min(r, Math.min(g, b)); return mn > 185 && Math.max(r, Math.max(g, b)) - mn < 45; }
+    /** The exact x of a white edge near x (within one coarse cell): dir +1 = left edge (first white column going right),
+     *  -1 = right edge. A column counts when a quarter of rows y0..y1 are white there. */
+    static double edge(int[] px, int w, int h, int x, int y0, int y1, int dir, int s) {
+        int need = 1;   // outermost white column: the pills' rounded ends have few white rows (a quarter-rows rule measured 4% short)
+        for (int i = -s - 1; i <= s + 1; i++) {
+            int xx = x + dir * i; if (xx < 0 || xx >= w) continue;
+            int n = 0; for (int y = Math.max(0, y0); y <= Math.min(h - 1, y1); y++) if (white(px[y * w + xx])) n++;
+            if (n >= need) return dir > 0 ? xx : xx + 1;
+        }
+        return dir > 0 ? x : x + 1;
+    }
+    /** The exact top of the pill at column x (first white row near the coarse top). */
+    static double topEdge(int[] px, int w, int h, int x, int y, int s) {
+        for (int yy = Math.max(0, y - s - 1); yy <= y + s + 1 && yy < h; yy++) if (white(px[yy * w + x])) return yy;
+        return y;
     }
 
     public static final class Out {
@@ -192,8 +233,15 @@ public final class Remap {
         blit(px, w, h, ph.leftX(0), ph.topY(160), ph.leftX(1900), ph.topY(250), d, 0, 160, 1900, 250);
         // Roblox's top-left buttons (menu)
         blit(px, w, h, ph.leftX(0), ph.topY(0), ph.leftX(560), ph.topY(160), d, 0, 0, 560, 160);
-        // Honey/Pollen pills and bar + hive prompt (centre/top)
-        blit(px, w, h, ph.cxX(440), ph.topY(0), ph.cxX(1900), ph.topY(300), d, 440, 0, 1900, 300);
+        // Honey/Pollen pills and bar (centre/top)
+        blit(px, w, h, ph.cxX(440), ph.topY(0), ph.cxX(1900), ph.topY(160), d, 440, 0, 1900, 160);
+        // hive prompt (centre/top): it sits over the middle of the buff row, so it is copied only when one is showing -
+        // otherwise those buff icons (left-anchored, e.g. Haste in slot 24) would be overwritten at the wrong scale
+        int[] withPrompt = d.clone();
+        blit(px, w, h, ph.cxX(760), ph.topY(160), ph.cxX(1560), ph.topY(300), withPrompt, 760, 160, 1560, 300);
+        Vision.Result pr = new Vision.Result();
+        Vision.prompt(withPrompt, W, H, pr);
+        if (pr.prompt != Vision.Prompt.NONE) d = withPrompt;
         // shift-lock button (left, middle of the screen)
         blit(px, w, h, ph.leftX(40), h / 2.0 + (590 - 540) * ph.k, ph.leftX(260), h / 2.0 + (810 - 540) * ph.k, d, 40, 590, 260, 810);
         o.px = d;
