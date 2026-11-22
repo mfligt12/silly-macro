@@ -90,12 +90,20 @@ public final class Vision {
             if (Math.max(r(p), Math.max(g(p), b(p))) < 75 && sat(p) < 28) band++;
         }
         band /= bn;
+        // Roblox's newer menu (2026-11): its panel is dark top to bottom on every tab (95-100%), but the old row at
+        // y 360 reads 79% there, so the Settings tab came back UNKNOWN and respawns looped ("keeps trying to respawn")
+        double panel = 0; int pn = 0;
+        for (int yy : new int[]{200, 300, 600, 800, 1000}) for (int x = (int) (300 / 2340.0 * w); x <= (int) (2100 / 2340.0 * w); x += 6) {
+            int p = px[(int) (yy / 1080.0 * h) * w + x]; pn++;
+            if (Math.max(r(p), Math.max(g(p), b(p))) < 75 && sat(p) < 28) panel++;
+        }
+        panel /= pn;
         res.menuPeople = menu > 0.6 && hud < 0.3;   // menus dim the HUD; a navy game scene can match the Resume colour
         if (confirm > 0.6 && hud < 0.3) { res.screen = Screen.RESPAWN_DIALOG; res.screenConf = confirm; }
         else if (res.menuPeople) { res.screen = Screen.MENU; res.screenConf = menu; }
         else if (res.meanLum < 18) { res.screen = Screen.DARK; res.screenConf = 1 - res.meanLum / 18; }
         // + the HUD must be dimmed (menus measured 0.00, gameplay ~1.0): a dark game scene is not a menu (live false alarm)
-        else if (band > 0.85 && hud < 0.3 && !isDisconnectBlue(at(px, w, h, 100 / 2340.0, 500 / 1080.0, 0, 0))) { res.screen = Screen.MENU; res.screenConf = band; }
+        else if ((band > 0.85 || panel > 0.85) && hud < 0.3 && !isDisconnectBlue(at(px, w, h, 100 / 2340.0, 500 / 1080.0, 0, 0))) { res.screen = Screen.MENU; res.screenConf = band; }
         else if (hud >= 0.75) { res.screen = Screen.GAME; res.screenConf = hud; }
         else { res.screen = Screen.UNKNOWN; res.screenConf = 1 - hud; }
 

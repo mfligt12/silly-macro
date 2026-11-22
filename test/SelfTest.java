@@ -498,6 +498,16 @@ public class SelfTest {
               check(ok == n, "new HUD on other phones: measured on " + ok + "/" + n + why);
           }
         }
+        { // Roblox's newer menu (2026-11, live S23): every tab is a menu, so a respawn can find People from any of them
+          String[][] menuWant = {{"s23_newmenu_people.png", "MENU"}, {"s23_newmenu_settings.png", "MENU"}, {"s23_newmenu_controls.png", "MENU"}, {"s23_newhud_hive.png", "GAME"}};
+          StringBuilder menuGot = new StringBuilder(); boolean ok = true; int n = 0;
+          for (String[] wv : menuWant) {
+              File ff = new File("test/fixtures/" + wv[0]); if (!ff.exists()) continue; n++;
+              BufferedImage im = ImageIO.read(ff); int iw = im.getWidth(), ih = im.getHeight();
+              Remap.phoneCal = null; Vision.Result r = Vision.analyze(Remap.apply(im.getRGB(0, 0, iw, ih, null, 0, iw), iw, ih));
+              ok &= r.screen.name().equals(wv[1]); menuGot.append(' ').append(wv[0].replace("s23_", "").replace(".png", "")).append('=').append(r.screen).append(r.menuPeople ? "(people)" : "");
+          }
+          if (n > 0) check(ok, "new Roblox menu recognized on every tab:" + menuGot); }
         { // auto re-measure needs the counters found anywhere: they must be found on tablet and foldable screens too
           int found = 0, runs = 0; StringBuilder miss = new StringBuilder();
           for (Object[] d : new Object[][]{{2304, 1440}, {2176, 1812}, {2800, 1752}, {1920, 1200}})

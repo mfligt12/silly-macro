@@ -1107,6 +1107,12 @@ final class Engine implements Runnable {
                 if (waitFor(r -> r.screen == Vision.Screen.MENU, 3000) == null) return false;
             }
             sleep(400);
+            // Roblox reopens the menu on the last tab used (Settings, after setting Camera Mode): Respawn is on People
+            Vision.Result m = Monitor.last;
+            if (m != null && m.screen == Vision.Screen.MENU && !m.menuPeople && T().peopleX >= 0) {
+                Log.add("respawn: menu opened on another tab, going to People");
+                in.tap(T().peopleX, T().peopleY); sleep(700);
+            }
             in.key(Keys.R, 60);
             Vision.Result dlg = waitFor(r -> r.screen == Vision.Screen.RESPAWN_DIALOG, phone ? 1200 : 3000);
             if (dlg == null && phone) {   // phones: R is no shortcut in this menu (S23, 2026-11-21): click its Respawn button
@@ -1127,11 +1133,17 @@ final class Engine implements Runnable {
         return true;
     }
 
+    private int respawnFails;
     private void respawn() {
         resetBagWatch();
         if (p.keyboard()) {
-            for (int attempt = 0; attempt < 3; attempt++) if (respawnKeys()) return;
-            pause("Couldn't respawn with Esc → R → Enter (3 tries)"); checkpoint(); throw new Recover("respawn failed");
+            for (int attempt = 0; attempt < 3; attempt++) if (respawnKeys()) { respawnFails = 0; return; }
+            // keys not reaching Roblox looks like this too ("won't move, keeps trying to respawn"): stop with the fix
+            // instead of looping forever (overnight turns pauses into retries)
+            String fix = "Couldn't respawn: Roblox didn't react to the keyboard (Esc). Check Shizuku is running and press Home step 2, "
+                    + "then close Roblox completely and open Bee Swarm again before pressing Start.";
+            if (++respawnFails >= 3) { stop(fix); checkpoint(); }   // checkpoint() ends the run (Stopped)
+            pause(fix); checkpoint(); throw new Recover("respawn failed");
         }
         for (int attempt = 0; attempt < 3; attempt++) {
             in.tap(T().menuX, T().menuY);
