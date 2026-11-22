@@ -45,8 +45,10 @@ public final class KeyServer {
             inject = c.getMethod("injectInputEvent", InputEvent.class, int.class);
         }
         if (java.util.Arrays.asList(args).contains("--uhid")) { uhidOnly = true; }   // testing: skip the hid tool
-        startVirtualDevice();
+        // listen first: creating the virtual keyboard can take 12 s where it fails (cloud phones), and the app gave up
+        // after 2 s with "started, but no answer yet" (Discord, 2026-11-22). Until it's done, "st" answers "starting".
         ServerSocket ss = new ServerSocket(PORT, 2, InetAddress.getByName("127.0.0.1"));
+        new Thread(KeyServer::startVirtualDevice, "virtual-device").start();
         System.out.println("beemacro keyserver ready on 127.0.0.1:" + PORT);
         while (true) {
             Socket s = ss.accept();
@@ -111,6 +113,7 @@ public final class KeyServer {
     static volatile String emulator = "starting";   // what the app sees: "hid tool", "uhid", or "none: why"
     static volatile boolean clicking;
     static final Object hidLock = new Object();
+    static final String NO_KB = " - this device doesn't let Shizuku create a keyboard + mouse (cloud phones and PC emulators usually block it)";
     static final String DEVICE_NAME = "Bee Macro Virtual Keyboard Mouse";
 
     /** A keyboard + mouse Roblox treats as real, on any device where the shell user may use uhid (Android 11+ hid
@@ -133,8 +136,8 @@ public final class KeyServer {
             uhid = new java.io.FileOutputStream("/dev/uhid");
             uhidWrite(uhidCreate2(DEVICE_NAME, hexBytes(HID_DESCRIPTOR)));
             if (waitDevice()) { emulator = "uhid"; System.out.println("virtual keyboard + mouse: ready (uhid)"); return; }
-            emulator = "none: the uhid device never appeared";
-        } catch (Exception e) { emulator = "none: " + e.getMessage() + " (this device doesn't let the shell user create a keyboard)"; }
+            emulator = "none: the uhid device never appeared" + NO_KB;
+        } catch (Exception e) { emulator = "none: " + e.getMessage() + NO_KB; }
         try { if (uhid != null) uhid.close(); } catch (Exception ignored) { }
         uhid = null;
         System.out.println("virtual keyboard + mouse: NOT available - " + emulator);

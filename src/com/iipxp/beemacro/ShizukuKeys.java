@@ -46,9 +46,12 @@ final class ShizukuKeys {
             m.setAccessible(true);
             Process pr = (Process) m.invoke(null, new String[]{"sh", "-c", cmd}, null, null);
             pr.waitFor();   // sh returns at once; the key sender keeps running on its own
-            android.os.SystemClock.sleep(2000);
             Keys.close();
-            return Keys.connect(c, false) ? "key sender running (started on the tablet)" : "started, but no answer yet: " + Keys.status;
+            for (int i = 0; i < 16; i++) {   // up to 8 s: app_process can take a few seconds to come up on slow devices
+                android.os.SystemClock.sleep(500);
+                if (Keys.connect(c, false)) return "key sender running";
+            }
+            return "started, but no answer after 8 s: " + Keys.status + ". Restart Shizuku and try again";
         } catch (Throwable t) { return "Shizuku start failed: " + t; }
     }
 }

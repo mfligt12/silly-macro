@@ -665,7 +665,7 @@ public class MainActivity extends Activity {
         StringBuilder s = new StringBuilder();
         if (p.keyboard()) {
             String emu = Keys.emulator;
-            line(s, emu != null && !emu.startsWith("none"), "Input: keyboard + mouse emulator — " + (emu == null ? "key sender not reached yet" : emu.startsWith("none") ? "NOT available (" + emu + ")" : "ready (" + emu + ")"));
+            line(s, emu != null && !emu.startsWith("none") && !emu.equals("starting"), "Input: keyboard + mouse emulator — " + (emu == null ? "key sender not reached yet" : emu.equals("starting") ? "starting…" : emu.startsWith("none") ? "NOT available (" + emu + ")" : "ready (" + emu + ")"));
             if (SystemClock.uptimeMillis() - emuAsked > 5000) { emuAsked = SystemClock.uptimeMillis(); new Thread(() -> { if (Keys.connect(this)) Keys.emulatorState(); }, "emu-state").start(); }
         }
         line(s, input, "Accessibility service (floating panel and menu taps)");

@@ -64,6 +64,8 @@ final class Engine implements Runnable {
         if (p.keyboard()) {
             if (!Keys.connect(s) || !Keys.ping()) return "Keyboard mode: the key sender isn't running on this device (" + Keys.status + "). Start it with Shizuku in Silly Macro (or start_keys from a PC) and try again.";
             String emu = Keys.emulatorState();
+            for (int i = 0; i < 30 && "starting".equals(emu); i++) { SystemClock.sleep(500); emu = Keys.emulatorState(); }   // just started: give it the time to create the keyboard
+            if ("starting".equals(emu)) return "The key sender is still creating its keyboard + mouse. Wait a few seconds and press Start again.";
             if (emu != null && emu.startsWith("none")) return "Keyboard mode: the key sender runs, but this device has no emulated keyboard/mouse (" + emu + "). Roblox ignores keys without one: plug in a USB/Bluetooth keyboard and mouse.";
         } else if (!s.tap(p.idleX, p.idleY)) return "Input test failed: accessibility gestures were not accepted.";
         return null;
