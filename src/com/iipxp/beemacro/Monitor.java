@@ -18,6 +18,8 @@ final class Monitor {
     static volatile int[] debugPx; static volatile int debugW, debugH; static volatile long debugTime;
     /** One raw frame on request (Discord screenshots): set shotWanted, the next frame is copied here. */
     /** Red error banner check on the next raw frame (sprinkler placement). */
+    /** Last time the Pollen counter's digits changed (tablet): pollen is coming in. */
+    static volatile long pollenChanged; private static boolean[] pollenSig;
     static volatile boolean bannerWanted; static volatile int bannerRows; static volatile long bannerTime;
     static volatile boolean shotWanted; static volatile int[] shotPx; static volatile int shotW, shotH; static volatile long shotTime;
     static volatile Vision.Result debugResult;
@@ -110,6 +112,12 @@ final class Monitor {
                     Remap.Out ro = Remap.apply(f.px, f.w, f.h); remap = ro;
                     Vision.Result r = Vision.analyze(ro);
                     long tn = SystemClock.uptimeMillis();
+                    if (ro.tablet && r.screen == Vision.Screen.GAME) {   // pollen counter digits changing = pollen coming in
+                        boolean[] sig = Vision.pollenText(f.px, f.w, f.h);
+                        int d = Vision.textDiff(pollenSig, sig);
+                        if (d > Math.max(10, sig.length / 400)) pollenChanged = tn;
+                        pollenSig = sig;
+                    }
                     if (ro.tablet && tn - honeyRead > 2000) { honeyRead = tn; long hv = HoneyOcr.read(f.px, f.w, f.h); if (hv > 0) honeySeen(hv, tn); }
                     final int[] fpx0 = ro.px; final int fw0 = ro.tablet ? Remap.W : f.w, fh0 = ro.tablet ? Remap.H : f.h;
                     List<Detector.Det> dets = new ArrayList<>();

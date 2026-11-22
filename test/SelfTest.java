@@ -373,6 +373,17 @@ public class SelfTest {
               }
           }
           check(ok, "drift by sight: slides measured back within 8 px (HUD and character fixed, one dimmed, one with a bee swarm):" + res); }
+        { // pollen coming in, read from the counter's digits: same frame = no change, the world moving = no change,
+          // a different pollen number = change (tablet frames)
+          BufferedImage pa = ImageIO.read(new File("test/fixtures/tab_under_tree.png")), pb = ImageIO.read(new File("test/fixtures/tab_sprinkler_refused.png"));
+          int aw = pa.getWidth(), ah = pa.getHeight();
+          int[] apx = pa.getRGB(0, 0, aw, ah, null, 0, aw), bpx = pb.getRGB(0, 0, pb.getWidth(), pb.getHeight(), null, 0, pb.getWidth());
+          boolean[] sa = Vision.pollenText(apx, aw, ah);
+          int unchanged = Vision.textDiff(sa, Vision.pollenText(apx.clone(), aw, ah));
+          int world = Vision.textDiff(sa, Vision.pollenText(slide(apx, aw, ah, 40, 30, 0.486, 0.73, 1.0, true), aw, ah));
+          int other = Vision.textDiff(sa, Vision.pollenText(bpx, pb.getWidth(), pb.getHeight()));
+          int thr = Math.max(10, sa.length / 400);
+          check(unchanged == 0 && world <= thr && other > thr, "pollen counter: unchanged " + unchanged + ", world moved " + world + ", other number " + other + " px differ (threshold " + thr + ")"); }
         // ---- sprinkler: learned from a before/after pair, then found again elsewhere (synthetic sprinkler on a real field frame)
         { BufferedImage fm = ImageIO.read(new File("test/fixtures/tab_field_middle.png"));
           Remap.Out o = Remap.apply(fm.getRGB(0, 0, fm.getWidth(), fm.getHeight(), null, 0, fm.getWidth()), fm.getWidth(), fm.getHeight());

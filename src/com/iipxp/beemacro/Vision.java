@@ -336,6 +336,28 @@ public final class Vision {
         return rows;
     }
 
+    /** The white digits of the Pollen counter at the top ("6,228,423/181,628,070 (+963/sec)") as a bitmap, tablet
+     *  frames (raw, any UI scale). Comparing two of these tells whether pollen is coming in, to the single pollen, even
+     *  when the bag bar doesn't move a pixel (a 181M bag: 1 px ≈ 440,000 pollen) or the field is dark under the trees. */
+    public static boolean[] pollenText(int[] px, int w, int h) {
+        double u = Remap.u(h);
+        int x0 = Math.max(0, (int) Remap.cx(1262, w, u)), x1 = Math.min(w, (int) Remap.cx(1660, w, u));
+        int y0 = Math.max(0, (int) (50 * u)), y1 = Math.min(h, (int) (94 * u));
+        boolean[] m = new boolean[Math.max(0, (x1 - x0) * (y1 - y0))];
+        int i = 0;
+        for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) {
+            int p = px[y * w + x];
+            m[i++] = ((p >> 16) & 255) > 215 && ((p >> 8) & 255) > 215 && (p & 255) > 215;
+        }
+        return m;
+    }
+    /** Pixels that differ between two pollen-counter bitmaps (−1 if not comparable). */
+    public static int textDiff(boolean[] a, boolean[] b) {
+        if (a == null || b == null || a.length != b.length) return -1;
+        int d = 0; for (int i = 0; i < a.length; i++) if (a[i] != b[i]) d++;
+        return d;
+    }
+
     public static int hasteSlot(int[] px, int w, int h) { return (int) hasteMatch(px, w, h)[0]; }
     /** {first slot or -1, its share of the running-figure mask that matched (the detection score), number of Haste icons}. */
     public static double[] hasteMatch(int[] px, int w, int h) {

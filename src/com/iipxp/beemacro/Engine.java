@@ -466,11 +466,15 @@ final class Engine implements Runnable {
     }
     /** Standing on our pad: the prompt on a frame taken after we stopped (two tries, frames arrive ~8 a second). */
     private boolean padHere() {
-        for (int i = 0; i < 2; i++) {
-            Vision.Result r = Monitor.fresh(SystemClock.uptimeMillis() + 120, 900);
-            if (r != null && sure(r) && ownHive(r)) return true;
+        // let the character stop sliding first (live: the prompt showed on arrival, then the slide carried it off the
+        // pad and converting found no "Make Honey"), then the prompt must be there on 2 frames in a row
+        sleep(350);
+        int hits = 0;
+        for (int i = 0; i < 3 && hits < 2; i++) {
+            Vision.Result r = Monitor.fresh(SystemClock.uptimeMillis(), 900);
+            if (r != null && sure(r) && ownHive(r)) hits++; else hits = 0;
         }
-        return false;
+        return hits >= 2;
     }
 
     static final double FACING_PAD = 0.35;     // straight on from the hive pad: 0.40-0.74 live
@@ -609,6 +613,7 @@ final class Engine implements Runnable {
 
     /** Pollen only falls at the hive. A big drop elsewhere (3 readings) means we died or were reset: start over. */
     private void guardBag(Vision.Result r) {
+        if (Monitor.pollenChanged > lastRise && (phase.startsWith("Farming") || fieldRecovering)) lastRise = Monitor.pollenChanged;   // the counter's digits moved: pollen is coming in
         if (!p.navGuard || !p.keyboard() || r == null || !bagKnown(r)) return;
         // pollen also reads near 0 during normal farming (honey-making effects, bigger bag): only an empty bag AT the hive is a death
         if (bagSeen >= 0 && NavGuard.bagEmptied(bagSeen, r.pollen) && ownHive(r)) {
@@ -962,7 +967,8 @@ final class Engine implements Runnable {
             checkpoint();
             double v = speedNow(prev);
             if (v > 0) { if (said) Log.add("haste readable again after " + (SystemClock.uptimeMillis() - t0) / 1000 + " s (x" + v + ")"); return v; }
-            if (!said) { Log.add("haste on but stack count unreadable — pausing the walk"); said = true; step = "Waiting: Haste stack count unreadable (keeps walk distance exact)"; }
+            if (!said && SystemClock.uptimeMillis() - t0 > 1000) { Log.add("haste on but stack count unreadable — pausing the walk"); said = true; }
+            step = "Waiting: Haste stack count unreadable (keeps walk distance exact)";
             if (SystemClock.uptimeMillis() - t0 > (p.keyboard() ? 20_000 : 60_000)) { Log.add("haste count unreadable — walking at x" + prev); return prev; }
             SystemClock.sleep(250);
         }
@@ -1155,6 +1161,12 @@ final class Engine implements Runnable {
         if (r.pollen < 1 && r.prompt != Vision.Prompt.TAP_RED) { Log.add("convert: backpack empty, nothing to convert"); return; }
         double startPct = r.pollen;
         resetBagWatch();
+        if (r.prompt != Vision.Prompt.TAP_BLUE && r.prompt != Vision.Prompt.TAP_RED) {   // slid off the pad: find it again first
+            Log.add("convert: no 'Make Honey' prompt (" + r.prompt + "), finding the pad again");
+            natroFindHive();
+            Vision.Result again = waitFor(x -> promptKnown(x), 2000);
+            if (again != null) r = again;
+        }
         if (r.prompt == Vision.Prompt.TAP_BLUE) prompt();
         Vision.Result started = waitFor(x -> promptKnown(x) && x.prompt == Vision.Prompt.TAP_RED, 5000);
         if (started == null) { pause("Conversion did not start (no 'Stop Making Honey')"); checkpoint(); throw new Recover("conversion not verified"); }
