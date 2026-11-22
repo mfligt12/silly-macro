@@ -71,9 +71,10 @@ public final class KeyServer {
             for (String line; (line = in.readLine()) != null; ) {
                 line = line.trim();
                 if (line.equals("p")) { out.println("ok"); continue; }
-                if (line.equals("st")) { out.println("ok " + emulator + " (keyboard " + keyboardId() + ", mouse " + mouseId() + ")"); continue; }   // which emulator, and the device ids keys/clicks use
+                if (line.equals("st")) { out.println("ok " + emulator + " (keyboard " + keyboardId() + ", mouse " + mouseId() + ") +hk"); continue; }   // +hk: knows "hk"   // which emulator, and the device ids keys/clicks use
                 String[] p = line.split(" ");
                 if (p[0].equals("rj") && p.length == 2) { out.println(rejoin(p[1]) ? "ok" : "bad link"); continue; }
+                if (p[0].equals("hk") && p.length == 3) { out.println(hidKey(Integer.parseInt(p[1]), Long.parseLong(p[2])) ? "ok" : "no hid"); continue; }   // "hk CODE MS": number key on the virtual keyboard
                 int code = Integer.parseInt(p[1]);
                 if (p[0].equals("ac")) {   // "ac 1|0 X Y": only the connection that switched clicking on may switch it off
                     if (code == 1) { clickOwner = sock; autoClick(true, Integer.parseInt(p[2]), Integer.parseInt(p[3])); }
@@ -190,6 +191,19 @@ public final class KeyServer {
 
     static void hidWrite(String json) throws java.io.IOException {
         synchronized (hidLock) { hid.write((json + "\n").getBytes("UTF-8")); hid.flush(); }
+    }
+    /** A key pressed on the virtual USB keyboard itself (HID report id 1: modifiers, reserved, 6 keys), the way a real
+     *  keyboard sends it. Injected number keys didn't place the sprinkler on a phone without a real keyboard (S23,
+     *  2026-11-22) while the tablet, which had one plugged in, did. Returns false when no virtual keyboard is up. */
+    static boolean hidKey(int code, long ms) {
+        int u = code >= KeyEvent.KEYCODE_1 && code <= KeyEvent.KEYCODE_9 ? 0x1E + (code - KeyEvent.KEYCODE_1) : code == KeyEvent.KEYCODE_0 ? 0x27 : 0;
+        if (u == 0 || (hid == null && uhid == null)) return false;
+        try {
+            report(new byte[]{1, 0, 0, (byte) u, 0, 0, 0, 0, 0});
+            SystemClock.sleep(Math.max(40, ms));
+            report(new byte[]{1, 0, 0, 0, 0, 0, 0, 0, 0});
+            return true;
+        } catch (Exception e) { System.out.println("hid key failed: " + e); return false; }
     }
     static void mouseButton(boolean down) throws java.io.IOException { report(new byte[]{2, (byte) (down ? 1 : 0), 0, 0, 0}); }
 

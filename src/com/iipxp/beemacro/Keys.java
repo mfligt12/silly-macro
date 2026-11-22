@@ -78,7 +78,12 @@ final class Keys {
     static volatile String emulator;
     static synchronized String emulatorState() {
         if (out == null) return null;
-        try { out.println("st"); String r = in.readLine(); emulator = r != null && r.startsWith("ok ") ? r.substring(3) : null; }
+        try {
+            out.println("st"); String r = in.readLine();
+            hkKnown = r != null && r.endsWith(" +hk");
+            if (hkKnown) r = r.substring(0, r.length() - 4);
+            emulator = r != null && r.startsWith("ok ") ? r.substring(3) : null;
+        }
         catch (Exception e) { close(); emulator = null; }
         return emulator;
     }
@@ -90,7 +95,21 @@ final class Keys {
      *  nothing in Bee Swarm but counts as input (tested live 2026-11-21: no lock in 5 min with a tap every 45 s). */
     static boolean nudge() { return tap(KeyEvent.KEYCODE_SCROLL_LOCK, 40); }
     /** Press and release, holding ms in between. */
-    static boolean tap(int code, long ms) { boolean ok = down(code); android.os.SystemClock.sleep(ms); return up(code) && ok; }
+    static boolean tap(int code, long ms) {
+        if (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9) {   // hotbar: as a real key press on the virtual keyboard
+            if (sendHk(code, ms)) return true;
+        }
+        boolean ok = down(code); android.os.SystemClock.sleep(ms); return up(code) && ok;
+    }
+    /** "hk": the number key as a virtual-keyboard report. Only sent to a key sender that said "+hk" in its status
+     *  reply: an older one never answers it (the connection would time out and drop). */
+    private static synchronized boolean sendHk(int code, long ms) {
+        if (out == null || !hkKnown) return false;
+        lastSent = android.os.SystemClock.uptimeMillis();
+        try { out.println("hk " + code + " " + ms); return "ok".equals(in.readLine()); }
+        catch (Exception e) { close(); return false; }
+    }
+    static volatile boolean hkKnown;
     /** Drop the connection: the server releases every held key. Safe from any thread. */
     static void releaseAll() { Socket s = sock; try { if (s != null) s.close(); } catch (Exception ignored) { } }
 }
