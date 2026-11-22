@@ -52,7 +52,75 @@ public final class Remap {
         return 0;
     }
 
+    // ---- phones other than the S23. Roblox keeps each HUD piece at a fixed place from its anchor, scaled by the UI
+    // scale, but phones differ in resolution, UI scale and the camera-cutout inset, so S23 positions miss on them
+    // (user reports: "Bee Swarm HUD not recognized"). The Honey and Pollen pills - two white boxes meeting at the
+    // screen centre, 8.6x as wide as tall - and Roblox's menu button give the layout on any phone.
+    /** A phone's HUD relative to the S23: scale k, centre line cx, pill top, left inset (S23: 1, 1164, 66, 0). */
+    public static final class Phone {
+        public final double k, cx, top, inset;
+        public Phone(double k, double cx, double top, double inset) { this.k = k; this.cx = cx; this.top = top; this.inset = inset; }
+        /** Same layout as the S23 frame the readers were measured on (then the frame is used as it is). */
+        public boolean s23(int w, int h) { return w == W && h == H && Math.abs(k - 1) < 0.02 && Math.abs(cx - S23_CX) < 6 && Math.abs(top - S23_TOP) < 5 && Math.abs(inset) < 8; }
+        double cxX(double x) { return cx + (x - S23_CX) * k; }        // centre/top anchored (pills, bar, prompt)
+        double topY(double y) { return top + (y - S23_TOP) * k; }
+        double leftX(double x) { return inset + x * k; }              // left anchored (menu button, buff row, shift lock)
+        @Override public String toString() { return String.format(java.util.Locale.US, "scale %.0f%%, centre %.0f, top %.0f, inset %.0f", k * 100, cx, top, inset); }
+    }
+    static final double S23_CX = 1164, S23_TOP = 66, S23_PILL_W = 550, S23_MENU_X0 = 182, S23_MENU_CY = 102, S23_MENU_W = 62;
+    /** This phone's measured layout (null until measured; see Monitor). */
+    public static volatile Phone phoneCal;
+
+    /** Find the Honey/Pollen pills (and the menu button) in a game frame. null when they aren't both there. */
+    public static Phone locatePhone(int[] px, int w, int h) {
+        int s = Math.max(1, h / 540), gw = w / s, gh = (int) (h * 0.3) / s;
+        boolean[] m = new boolean[gw * gh];
+        for (int y = 0; y < gh; y++) for (int x = 0; x < gw; x++) {
+            int p = px[(y * s) * w + x * s], r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            int mn = Math.min(r, Math.min(g, b)), mx = Math.max(r, Math.max(g, b));
+            m[y * gw + x] = mn > 185 && mx - mn < 45;
+        }
+        java.util.List<int[]> comps = new java.util.ArrayList<>();   // {x0, x1, y0, y1, cells} in screen px
+        int[] q = new int[gw * gh]; boolean[] seen = new boolean[gw * gh];
+        for (int i = 0; i < m.length; i++) {
+            if (!m[i] || seen[i]) continue;
+            int qa = 0, qb = 0, x0 = gw, x1 = 0, y0 = gh, y1 = 0, n = 0;
+            q[qb++] = i; seen[i] = true;
+            while (qa < qb) {
+                int c = q[qa++], cx = c % gw, cy = c / gw; n++;
+                x0 = Math.min(x0, cx); x1 = Math.max(x1, cx); y0 = Math.min(y0, cy); y1 = Math.max(y1, cy);
+                if (cx > 0 && m[c - 1] && !seen[c - 1]) { seen[c - 1] = true; q[qb++] = c - 1; }
+                if (cx < gw - 1 && m[c + 1] && !seen[c + 1]) { seen[c + 1] = true; q[qb++] = c + 1; }
+                if (cy > 0 && m[c - gw] && !seen[c - gw]) { seen[c - gw] = true; q[qb++] = c - gw; }
+                if (cy < gh - 1 && m[c + gw] && !seen[c + gw]) { seen[c + gw] = true; q[qb++] = c + gw; }
+            }
+            if (n >= 20) comps.add(new int[]{x0 * s, (x1 + 1) * s, y0 * s, (y1 + 1) * s, n});
+        }
+        int[] bl = null, br = null; double best = 0;
+        for (int[] a : comps) for (int[] b : comps) {
+            if (a == b || a[0] >= b[0]) continue;
+            double wa = a[1] - a[0], wb = b[1] - b[0], ha = a[3] - a[2], hb = b[3] - b[2];
+            if (wa < 0.08 * w || Math.abs(wa - wb) > 0.12 * Math.max(wa, wb)) continue;            // two equal pills
+            if (wa / ha < 5.5 || wa / ha > 11 || wb / hb < 5.5 || wb / hb > 11) continue;           // 8.6:1 measured
+            if (Math.abs(a[2] - b[2]) > 0.03 * h || b[0] - a[1] > 0.03 * w || b[0] - a[1] < -0.01 * w) continue;   // side by side, meeting
+            double mid = (a[1] + b[0]) / 2.0;
+            if (Math.abs(mid - w / 2.0) > 0.2 * w || a[2] > 0.2 * h) continue;                       // at the top, near the centre
+            double score = wa + wb;
+            if (score > best) { best = score; bl = a; br = b; }
+        }
+        if (bl == null) return null;
+        double k = ((bl[1] - bl[0]) + (br[1] - br[0])) / 2.0 / S23_PILL_W, cx = (bl[1] + br[0]) / 2.0, top = (bl[2] + br[2]) / 2.0;
+        double inset = 0;   // the menu button (white, ~62 px square on the S23) gives the left inset; the S23's if not seen
+        for (int[] c : comps) {
+            double cw = c[1] - c[0], ch = c[3] - c[2], cy = (c[2] + c[3]) / 2.0;
+            if (Math.abs(cw - S23_MENU_W * k) < 0.35 * S23_MENU_W * k && Math.abs(ch - 60 * k) < 0.35 * 60 * k
+                    && Math.abs(cy - (top + (S23_MENU_CY - S23_TOP) * k)) < 20 * k && c[1] < cx - 500 * k) { inset = c[0] - S23_MENU_X0 * k; break; }
+        }
+        return new Phone(k, cx, top, inset);
+    }
+
     public static final class Out {
+        public boolean phone; public double placeX0;   // phone remap: where the world was placed in the S23 frame
         public int[] px; public boolean tablet; public double worldScale, worldX0, ui = 1;
         public boolean menuOpen, respawnDialog;   // tablet-only screens (the S23 menu check doesn't apply)
         public int w, h;                           // size of px
@@ -76,7 +144,11 @@ public final class Remap {
         // Phone-shaped frames keep their pixels, but the world readers look through the same window the tablet has:
         // Roblox keeps the vertical field of view, so a 1.6 x height window centred on the screen shows the same angles
         // on any shape (the S23's extra width is extra scenery at the sides, where the readers would look wrongly).
-        if (!tablet(w, h)) { o.px = px; o.worldScale = 1; o.worldX0 = Math.max(0, (w - WORLD_ASPECT * h) / 2); return o; }
+        if (!tablet(w, h)) {
+            Phone ph = phoneCal;
+            if (ph == null || ph.s23(w, h)) { o.px = px; o.worldScale = 1; o.worldX0 = Math.max(0, (w - WORLD_ASPECT * h) / 2); return o; }
+            return phone(px, w, h, ph);
+        }
         o.w = W; o.h = H;
         o.tablet = true;
         int[] d = new int[W * H];
@@ -103,6 +175,27 @@ public final class Remap {
         // tablet-only screens
         o.menuOpen = menuOpen(px, w, h);
         o.respawnDialog = respawnDialog(px, w, h);
+        o.px = d;
+        return o;
+    }
+
+    /** A phone with another layout, rebuilt into the S23 frame: the world scaled evenly to its height and centred,
+     *  then each HUD piece copied from where this phone draws it (anchor + scale) to where the S23 has it. */
+    public static Out phone(int[] px, int w, int h, Phone ph) {
+        Out o = new Out(); o.w = W; o.h = H; o.phone = true;
+        int[] d = new int[W * H];
+        double s = H / (double) h, x0 = (W - w * s) / 2;
+        o.worldScale = s; o.placeX0 = x0; o.worldX0 = Math.max(0, (W - WORLD_ASPECT * H) / 2);
+        java.util.Arrays.fill(d, 0xFF3CA03C);
+        blit(px, w, h, 0, 0, w, h, d, x0, 0, x0 + w * s, H);
+        // buff row (left/top) first: the hive prompt is drawn over it
+        blit(px, w, h, ph.leftX(0), ph.topY(160), ph.leftX(1900), ph.topY(250), d, 0, 160, 1900, 250);
+        // Roblox's top-left buttons (menu)
+        blit(px, w, h, ph.leftX(0), ph.topY(0), ph.leftX(560), ph.topY(160), d, 0, 0, 560, 160);
+        // Honey/Pollen pills and bar + hive prompt (centre/top)
+        blit(px, w, h, ph.cxX(440), ph.topY(0), ph.cxX(1900), ph.topY(300), d, 440, 0, 1900, 300);
+        // shift-lock button (left, middle of the screen)
+        blit(px, w, h, ph.leftX(40), h / 2.0 + (590 - 540) * ph.k, ph.leftX(260), h / 2.0 + (810 - 540) * ph.k, d, 40, 590, 260, 810);
         o.px = d;
         return o;
     }
@@ -147,6 +240,11 @@ public final class Remap {
     /** Box from remapped (S23) coordinates back to the real screen, for drawing. World boxes use the even world
      *  scale; the buff row uses its tile mapping. */
     public static int[] toScreen(Out o, int[] r, boolean buffRow) {
+        if (o != null && o.phone) {
+            Phone ph = phoneCal; if (ph == null) return r;
+            if (buffRow) return new int[]{(int) ph.leftX(r[0]), (int) ph.topY(r[1]), (int) ph.leftX(r[2]), (int) ph.topY(r[3])};
+            return new int[]{(int) ((r[0] - o.placeX0) / o.worldScale), (int) (r[1] / o.worldScale), (int) ((r[2] - o.placeX0) / o.worldScale), (int) (r[3] / o.worldScale)};
+        }
         if (o == null || !o.tablet) return r;
         if (buffRow) {
             double k = 66.5 * o.ui / 60, y0 = 101.5 * o.ui;
@@ -156,6 +254,7 @@ public final class Remap {
     }
     /** Screen rect (our own drawn boxes/panel) into remapped coordinates, for the detector's ignore list. */
     public static int[] fromScreen(Out o, int[] r) {
+        if (o != null && o.phone) return new int[]{(int) (r[0] * o.worldScale + o.placeX0), (int) (r[1] * o.worldScale), (int) (r[2] * o.worldScale + o.placeX0), (int) (r[3] * o.worldScale)};
         if (o == null || !o.tablet) return r;
         return new int[]{(int) (r[0] * o.worldScale + o.worldX0), (int) (r[1] * o.worldScale), (int) (r[2] * o.worldScale + o.worldX0), (int) (r[3] * o.worldScale)};
     }
@@ -171,6 +270,14 @@ public final class Remap {
             t.peopleX = -1; t.peopleY = -1;
             t.confirmX = (float) (cx(960, w, u) / w); t.confirmY = (float) (my(650, h, u) / h);
             t.promptX = (float) (cx(1150, w, u) / w); t.promptY = (float) (160 * u / h);
+        } else if (phoneCal != null && !phoneCal.s23(w, h)) {   // another phone: the S23 spots moved by its own layout
+            Phone ph = phoneCal;
+            t.menuX = (float) (ph.leftX(213) / w); t.menuY = (float) (ph.topY(100) / h);
+            t.promptX = (float) (ph.cxX(1160) / w); t.promptY = (float) (ph.topY(240) / h);
+            // menu dialog buttons: centred on the screen
+            t.respawnX = (float) ((w / 2.0 + (1168 - 1170) * ph.k) / w); t.respawnY = (float) ((h / 2.0 + (450 - 540) * ph.k) / h);
+            t.peopleX = (float) ((w / 2.0 + (427 - 1170) * ph.k) / w); t.peopleY = (float) ((h / 2.0 + (262 - 540) * ph.k) / h);
+            t.confirmX = (float) ((w / 2.0 + (840 - 1170) * ph.k) / w); t.confirmY = (float) ((h / 2.0 + (762 - 540) * ph.k) / h);
         } else {
             t.menuX = Vision.MENU_X; t.menuY = Vision.MENU_Y; t.respawnX = Vision.RESPAWN_X; t.respawnY = Vision.RESPAWN_Y;
             t.peopleX = Vision.PEOPLE_X; t.peopleY = Vision.PEOPLE_Y; t.confirmX = Vision.CONFIRM_X; t.confirmY = Vision.CONFIRM_Y;

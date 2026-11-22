@@ -66,7 +66,18 @@ public class MainActivity extends Activity {
     boolean wide;
 
     // ---- dashboard views
-    TextView whStatus;
+    TextView whStatus, hudState;
+    /** Phone/tablet, model, Android version and the screen in landscape: what the HUD reader adapts to. */
+    String deviceSummary() {
+        android.graphics.Rect b = getWindowManager().getMaximumWindowMetrics().getBounds();
+        int w = Math.max(b.width(), b.height()), h = Math.min(b.width(), b.height());
+        boolean tab = Remap.tablet(w, h);
+        String os = "Android " + android.os.Build.VERSION.RELEASE + " (API " + android.os.Build.VERSION.SDK_INT + ")";
+        return (tab ? "Tablet" : "Phone") + " · " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + "\n" + os
+                + (android.os.Build.VERSION.SDK_INT < 33 ? "  ⚠ Silly Macro needs Android 13 or newer" : "")
+                + "\nScreen " + w + " × " + h + " (" + String.format(java.util.Locale.US, "%.2f", w / (double) h) + ":1, "
+                + getResources().getDisplayMetrics().densityDpi + " dpi)";
+    }
     TextView heroSub, heroState, tPhase, tTimer, tBag, tHive, tLoops, tRate, tField, tPattern, aiText, visionCap, startLabel;
     Ui.Bar bagBar; Ui.Pulse livePulse, scanPulse, railPulse; LinearLayout buffChips; ImageView dashFrame; View startGlow;
     long dashFrameAt;
@@ -577,6 +588,12 @@ public class MainActivity extends Activity {
             public void onStopTrackingTouch(SeekBar s) { App.save(MainActivity.this); }
         });
         o.addView(sb);
+        LinearLayout dv = card("Your device");
+        dv.addView(tv(deviceSummary(), 13, TXT));
+        dv.addView(tv("Silly Macro reads Bee Swarm's HUD the way this screen draws it: it finds the Honey and Pollen "
+                + "counters at the top and measures the scale, centre and camera-cutout inset by itself the first time you're in game.", 12, DIM));
+        hudState = tv("", 13, Ui.CYAN); dv.addView(hudState);
+        dv.addView(button("Re-measure HUD (after changing Roblox's UI or screen settings)", 0, v -> { Monitor.recalibrate(); toast("Open Bee Swarm in landscape for a few seconds"); }));
         if (Account.configured(this)) {
             LinearLayout ac = card("Account");
             ac.addView(tv("Signed in as " + Account.email(this), 13, TXT));
@@ -701,6 +718,7 @@ public class MainActivity extends Activity {
         refreshPerf();
         if (currentKey.equals("settings") && p.debug) log.setText(Log.dump(60));
         if (currentKey.equals("settings")) whStatus.setText("Last: " + Webhook.lastStatus);
+        if (currentKey.equals("settings") && hudState != null) hudState.setText("HUD layout: " + Monitor.calState);
         if (currentKey.equals("tokens")) {
             Detector.Library lib = App.library(this);
             StringBuilder L = new StringBuilder();

@@ -37,7 +37,7 @@ final class Monitor {
     static volatile Runnable onFrame;
     static volatile Remap.Out remap;
     static volatile int[] thumb; static volatile long thumbTime;   // Align thumbnail of the latest raw frame                 // last frame's layout mapping (overlay draws through it)
-    static List<int[]> ignoreRemapped(Remap.Out ro) { if (!ro.tablet) return ignore; List<int[]> o = new ArrayList<>(); for (int[] r : ignore) o.add(Remap.fromScreen(ro, r)); return o; }
+    static List<int[]> ignoreRemapped(Remap.Out ro) { if (!ro.tablet && !ro.phone) return ignore; List<int[]> o = new ArrayList<>(); for (int[] r : ignore) o.add(Remap.fromScreen(ro, r)); return o; }
     static volatile NavGuard.View view;               // flowers around the character (null = not in gameplay)
     /** Set a name to save the next raw frame as a PNG in the app's files/guard folder (for checking guard decisions). */
     static volatile String saveFrame;
@@ -52,10 +52,14 @@ final class Monitor {
     /** Auto screen calibration: a few agreeing honey-counter measurements set Remap.uiCal. */
     static volatile String calState = "not measured yet";
     private static final List<Double> calSamples = new ArrayList<>(); private static long calTry;
-    static void recalibrate() { synchronized (calSamples) { calSamples.clear(); } Remap.uiCal = 0; calState = "not measured yet"; }
+    static void recalibrate() {
+        synchronized (calSamples) { calSamples.clear(); } synchronized (phoneSamples) { phoneSamples.clear(); }
+        Remap.uiCal = 0; Remap.phoneCal = null; calTry = 0; calState = "not measured yet";
+    }
     private static void calibrateStep(Profile p, CaptureService.Frame f, long now) {
         if (p.uiScale > 0) { Remap.uiCal = p.uiScale / 100.0; calState = "set by hand: " + p.uiScale + "%"; return; }
-        if (Remap.uiCal > 0 || !Remap.tablet(f.w, f.h) || now - calTry < 3000) return;
+        if (!Remap.tablet(f.w, f.h)) { phoneStep(f, now); return; }
+        if (Remap.uiCal > 0 || now - calTry < 3000) return;
         calTry = now;
         double c = Remap.calibrate(f.px, f.w, f.h);
         if (c <= 0) { calState = "waiting for the honey counter"; return; }
@@ -70,6 +74,25 @@ final class Monitor {
             Remap.uiCal = Math.abs(m - def) < 0.015 * m ? def : m;
             calState = String.format(java.util.Locale.US, "measured %.1f%% on %dx%d", Remap.uiCal * 100, f.w, f.h);
             Log.add("screen: UI scale " + calState);
+        }
+    }
+    private static final List<Remap.Phone> phoneSamples = new ArrayList<>();
+    /** Phones: find where this phone draws the HUD (3 matching readings), so other phones than the S23 read right. */
+    private static void phoneStep(CaptureService.Frame f, long now) {
+        if (now - calTry < (Remap.phoneCal == null ? 1500 : 60_000)) return;   // re-checked every minute (UI scale can change)
+        calTry = now;
+        Remap.Phone ph = Remap.locatePhone(f.px, f.w, f.h);
+        if (ph == null) { if (Remap.phoneCal == null) calState = "phone: looking for the Honey/Pollen counters"; return; }
+        synchronized (phoneSamples) {
+            phoneSamples.add(ph);
+            while (phoneSamples.size() > 3) phoneSamples.remove(0);
+            if (phoneSamples.size() < 3) return;
+            Remap.Phone a = phoneSamples.get(0), b = phoneSamples.get(1), c = phoneSamples.get(2);
+            if (Math.abs(a.k - c.k) > 0.02 * c.k || Math.abs(a.cx - c.cx) > 8 || Math.abs(a.top - c.top) > 6 || Math.abs(a.inset - c.inset) > 10) return;
+            Remap.Phone old = Remap.phoneCal;
+            Remap.phoneCal = b;
+            calState = (b.s23(f.w, f.h) ? "S23 layout" : "phone layout " + b) + " on " + f.w + "x" + f.h;
+            if (old == null || Math.abs(old.k - b.k) > 0.02 || Math.abs(old.inset - b.inset) > 10) Log.add("screen: " + calState);
         }
     }
     static volatile double goldRow;                   // hive gold across the upper half of the view (NavGuard.goldRow)
@@ -125,7 +148,7 @@ final class Monitor {
                         else if (said == FieldMessages.Said.OTHER_FIELD) { msgOther = tn; if (msgOtherSince == 0) msgOtherSince = tn; }
                     }
                     if (ro.tablet && tn - honeyRead > 2000) { honeyRead = tn; long hv = HoneyOcr.read(f.px, f.w, f.h); if (hv > 0) honeySeen(hv, tn); }
-                    final int[] fpx0 = ro.px; final int fw0 = ro.tablet ? Remap.W : f.w, fh0 = ro.tablet ? Remap.H : f.h;
+                    final int[] fpx0 = ro.px; final int fw0 = ro.w, fh0 = ro.h;
                     List<Detector.Det> dets = new ArrayList<>();
                     boolean game = r.screen == Vision.Screen.GAME && r.screenConf >= p.minConfidence;
                     long now = SystemClock.uptimeMillis();

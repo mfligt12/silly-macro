@@ -385,6 +385,36 @@ public class SelfTest {
           int other = Vision.textDiff(sa, Vision.pollenText(bpx, pb.getWidth(), pb.getHeight()));
           int thr = Math.max(10, sa.length / 400);
           check(unchanged == 0 && world <= thr && other > thr, "pollen counter: unchanged " + unchanged + ", world moved " + world + ", other number " + other + " px differ (threshold " + thr + ")"); }
+        { // other phones: find the HUD (pills + menu button) and rebuild the S23 layout; every reading must match the S23's
+          String[] phoneFx = {"s23_kb_turn0.png", "s23_kb_turn1.png", "s23_pepper_field.png", "s23_kb_hive.png", "s23_zoomed_pad.png", "s23_far_turn0.png",
+                  "field_pinetree.png", "field_pinetree2.png", "field_other.png", "hasteon1.png", "hasteon2.png", "haste_x4.png", "haste_x5.png", "haste_x7.png",
+                  "hasteoff1.png", "hud_bright_wall.png", "hud_with_panel.png", "cannon_prompt.png"};
+          double[][] shapes = {{0.6667, 1560, 720, 0}, {1.3333, 3120, 1440, 0}, {1.0, 2460, 1080, 60}, {1.0, 2400, 1080, 30}};
+          int runs = 0, bad = 0, skipped = 0; StringBuilder why = new StringBuilder(); java.util.Set<String> seen = new java.util.HashSet<>();
+          for (String fx : phoneFx) {
+              File ff = new File("test/fixtures/" + fx); if (!ff.exists()) continue;
+              BufferedImage im = ImageIO.read(ff); int iw = im.getWidth(), ih = im.getHeight();
+              if (iw != 2340 || ih != 1080) continue;
+              int[] px = im.getRGB(0, 0, iw, ih, null, 0, iw);
+              Vision.Result o0 = Vision.analyze(px, iw, ih);
+              if (o0.screen != Vision.Screen.GAME) continue;
+              Remap.Phone self = Remap.locatePhone(px, iw, ih);
+              if (self == null) { skipped++; continue; }   // pills merged with a bright hive wall: calibration uses other frames
+              if (!self.s23(iw, ih)) { bad++; why.append(" ").append(fx).append(":S23-not-identity(").append(self).append(")"); continue; }
+              for (double[] sh : shapes) {
+                  int ow = (int) sh[1], oh = (int) sh[2];
+                  int[] q = otherPhone(px, iw, ih, sh[0], ow, oh, (int) sh[3]);
+                  Remap.Phone ph = Remap.locatePhone(q, ow, oh); runs++;
+                  if (ph == null) { bad++; if (seen.add(fx + ow)) why.append(" ").append(fx).append("@").append(ow).append(":no-HUD"); continue; }
+                  Remap.phoneCal = ph;
+                  Vision.Result r = Vision.analyze(Remap.apply(q, ow, oh));
+                  boolean match = r.screen == o0.screen && Math.abs(r.pollen - o0.pollen) <= 3 && r.prompt == o0.prompt && r.haste == o0.haste
+                          && r.hasteSlot == o0.hasteSlot && r.shiftLock == o0.shiftLock;
+                  if (!match) { bad++; if (seen.add(fx + ow)) why.append(String.format(" %s@%d:%s/%s bag %.0f/%.0f prompt %s/%s haste %s%d/%s%d lock %d/%d", fx, ow, r.screen, o0.screen, r.pollen, o0.pollen, r.prompt, o0.prompt, r.haste, r.hasteSlot, o0.haste, o0.hasteSlot, r.shiftLock, o0.shiftLock)); }
+              }
+          }
+          Remap.phoneCal = null;
+          check(bad == 0 && runs >= 40 && skipped <= 5, "other phones: HUD found and every reading matches the S23 on " + (runs - bad) + "/" + runs + " screen shapes (" + skipped + " bright-wall frames skipped)" + why); }
         { // the game's own message names the field: Pine Tree Forest vs another field, read from the newest message
           String[][] msgWant = {{"tab_field_middle.png", "PINE_TREE"}, {"tab_field_edge2.png", "PINE_TREE"}, {"tab_roses_messages.png", "OTHER_FIELD"},
                              {"tab_field_night.png", "NONE"}, {"tab_field_wrong.png", "NONE"}, {"tab_under_tree.png", "NONE"}, {"tab_spawn_view.png", "NONE"}};
@@ -602,6 +632,18 @@ public class SelfTest {
     }
 
     /** A made-up sprinkler (grey body, dark centre, four gold nozzles) drawn into a frame, for the finder test. */
+    /** The S23 frame as another phone would show it: scaled by k and placed at offset ox (wider screens pad the sides). */
+    static int[] otherPhone(int[] px, int w, int h, double k, int ow, int oh, int ox) {
+        int[] out = new int[ow * oh];
+        java.util.Arrays.fill(out, 0xFF3CA03C);
+        for (int y = 0; y < oh; y++) for (int x = 0; x < ow; x++) {
+            double sx = (x - ox) / k, sy = y / k;
+            if (sx < 0 || sy < 0 || sx > w - 1 || sy > h - 1) continue;
+            out[y * ow + x] = px[(int) sy * w + (int) sx];
+        }
+        return out;
+    }
+
     /** The world slid by (dx, dy) while the HUD and the character stay put (what drift looks like on screen);
      *  `dim` scales brightness (day/night), `swarm` sprinkles moving bee-coloured dots everywhere. */
     static int[] slide(int[] px, int w, int h, int dx, int dy, double plx, double ply, double dim, boolean swarm) {

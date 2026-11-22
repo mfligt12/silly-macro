@@ -11,7 +11,8 @@ final class App {
             if (profile.device.isEmpty()) {
                 android.util.DisplayMetrics m = c.getResources().getDisplayMetrics();
                 boolean tab = Remap.tablet(Math.max(m.widthPixels, m.heightPixels), Math.min(m.widthPixels, m.heightPixels));
-                profile.device = tab ? "tablet" : "s23";
+                profile.device = tab ? "tablet" : "s23";   // reader family: tablet remap, or phone (S23 layout, measured per phone)
+                Log.add("device: " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + ", Android " + android.os.Build.VERSION.RELEASE + ", " + Math.max(m.widthPixels, m.heightPixels) + "x" + Math.min(m.widthPixels, m.heightPixels) + (tab ? " (tablet)" : " (phone)"));
                 if (tab) profile.applyTabletDefaults();
                 profile.save(c.getFilesDir());
                 Log.add("profile: first start on " + profile.device + " layout");
