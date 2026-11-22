@@ -187,6 +187,7 @@ final class Engine implements Runnable {
         if (r != null && ownHive(r)) return;
         if (r != null && r.prompt == Vision.Prompt.TAP_CLAIM) { claimHere(); return; }
         if (!night()) return;
+        if (p.hiveConfirmed) { Log.add("hive: prompt not read at confirmed slot " + p.hiveSlot + ", keeping it"); return; }   // never overwrite the user's slot
         int start = p.hiveSlot;
         for (int s : new int[]{3, 2, 4, 1, 5, 6}) {
             if (s == start) continue;
