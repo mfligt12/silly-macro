@@ -57,32 +57,11 @@ public class MacroService extends AccessibilityService {
     private Runnable patShow;
 
     @Override public void onCreate() { super.onCreate(); wm = getSystemService(WindowManager.class); Log.add("input: service created"); }
-    @Override protected void onServiceConnected() { inst = this; Log.add("input: connected"); addBoxes(); showOverlay(App.profile(this).overlayVisible); }
-    @Override public void onAccessibilityEvent(AccessibilityEvent e) { if (inst == null) { inst = this; Log.add("input: connected (late)"); addBoxes(); showOverlay(App.profile(this).overlayVisible); } }
+    @Override protected void onServiceConnected() { inst = this; Log.add("input: connected"); showOverlay(App.profile(this).overlayVisible); }
+    @Override public void onAccessibilityEvent(AccessibilityEvent e) { if (inst == null) { inst = this; Log.add("input: connected (late)"); showOverlay(App.profile(this).overlayVisible); } }
     @Override public void onInterrupt() { emergencyRelease(); }
-    @Override public boolean onUnbind(Intent i) { Log.add("input: unbound"); emergencyRelease(); removeOverlay(); removeBoxes(); inst = null; return super.onUnbind(i); }
-    @Override public void onDestroy() { Log.add("input: destroyed"); inst = null; removeOverlay(); removeBoxes(); super.onDestroy(); }
-
-    // ------------------------------------------------------------------ detection boxes (separate window under the panel)
-    private BoxOverlay boxes;
-    private void addBoxes() {
-        ui.post(() -> {
-            if (boxes != null) return;
-            boxes = new BoxOverlay(this);
-            WindowManager.LayoutParams bl = new WindowManager.LayoutParams(-1, -1, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                    PixelFormat.TRANSLUCENT);
-            bl.gravity = Gravity.TOP | Gravity.START;
-            bl.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
-            if (android.os.Build.VERSION.SDK_INT >= 30) bl.setFitInsetsTypes(0);   // older: FLAG_LAYOUT_NO_LIMITS already covers the whole screen
-            wm.addView(boxes, bl);
-            BoxOverlay b = boxes;
-            Monitor.onFrame = b::postInvalidate;
-        });
-    }
-    private void removeBoxes() { Monitor.onFrame = null; if (boxes != null) { try { wm.removeView(boxes); } catch (Exception ignored) { } boxes = null; } }
-    void redrawBoxes() { BoxOverlay b = boxes; if (b != null) b.postInvalidate(); }
+    @Override public boolean onUnbind(Intent i) { Log.add("input: unbound"); emergencyRelease(); removeOverlay(); inst = null; return super.onUnbind(i); }
+    @Override public void onDestroy() { Log.add("input: destroyed"); inst = null; removeOverlay(); super.onDestroy(); }
 
     // ------------------------------------------------------------------ input
     Point screen() { Point p = new Point(); wm.getDefaultDisplay().getRealSize(p); return p; }
@@ -488,7 +467,7 @@ public class MacroService extends AccessibilityService {
             ui.post(tick);
         });
     }
-    void removeOverlay() { if (boxes != null) boxes.panel = null; if (overlay != null) { try { wm.removeView(overlay); } catch (Exception ignored) { } overlay = null; ui.removeCallbacks(tick); } }
+    void removeOverlay() { if (overlay != null) { try { wm.removeView(overlay); } catch (Exception ignored) { } overlay = null; ui.removeCallbacks(tick); } }
     public boolean overlayShown() { return overlay != null; }
 
     private void buildOverlay() {
@@ -552,7 +531,7 @@ public class MacroService extends AccessibilityService {
                 if (patternBox != null) { patternBox.setVisibility(View.GONE); patShow.run(); }   // keep the game HUD clear
                 if (fieldBox != null) { fieldBox.setVisibility(View.GONE); fieldShow.run(); }
                 // off the UI thread: preflight waits for a gesture callback, which is delivered on the UI thread
-                new Thread(() -> { SystemClock.sleep(400); String why = Engine.start(this); if (why != null) toast(why); }, "preflight").start();
+                new Thread(() -> { SystemClock.sleep(400); String why = Engine.start(this); if (why != null) { startWhy = why; startWhyAt = SystemClock.uptimeMillis(); toast(why); } }, "preflight").start();
             }
             else if (e.paused) e.resume(); else e.pause("paused by you");
         });
@@ -783,10 +762,6 @@ public class MacroService extends AccessibilityService {
             if (overlay == null) return;
             Point sz = screen();   // accessibility services don't reliably get config changes: re-dock on rotation here
             if (sz.x != lastW) { lastW = sz.x; if (overlay.isAttachedToWindow()) { place(); wm.updateViewLayout(overlay, lp); } }
-            if (boxes != null && overlay.isAttachedToWindow()) {
-                int[] at = new int[2]; overlay.getLocationOnScreen(at);
-                boxes.panel = new android.graphics.Rect(at[0], at[1], at[0] + overlay.getWidth(), at[1] + overlay.getHeight());
-            }
             Engine e = Engine.inst;
             setKeepAwake(e != null && !e.finished());
             // nothing sent for 45 s (converting, balloon, waits): one harmless key so Samsung's touch lock doesn't appear
@@ -817,7 +792,9 @@ public class MacroService extends AccessibilityService {
                 status.setText(String.format(Locale.US, "%s · 🎒 %s · ⏱ %s%s", e.phase, bp, Stats.fmt(e.stats.elapsed()), hr.isEmpty() ? "" : " · " + hr));
                 playBtn.setText(e.paused ? "▶ Resume" : "⏸ Pause");
             } else {
-                status.setText((e != null ? "Ended: " + e.reason : "Ready") + " · 🎒 " + bp);
+                // why Start didn't start, in full on the panel (a toast cuts it to two lines)
+                if (startWhy != null && SystemClock.uptimeMillis() - startWhyAt < 30000) status.setText("⚠ " + startWhy);
+                else status.setText((e != null ? "Ended: " + e.reason : "Ready") + " · 🎒 " + bp);
                 playBtn.setText("▶ Start");
             }
             if (expandedBox.getVisibility() == View.VISIBLE) {
@@ -868,5 +845,6 @@ public class MacroService extends AccessibilityService {
         });
     }
 
+    static volatile String startWhy; static volatile long startWhyAt;
     void toast(String s) { ui.post(() -> android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_LONG).show()); }
 }

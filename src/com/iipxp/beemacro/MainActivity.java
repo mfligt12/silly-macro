@@ -40,22 +40,21 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Silly Macro's app: an expandable sidebar of tabs (Home dashboard, AI Vision, Tokens, Buffs, Sequences, Navigation,
+/** Silly Macro's app: an expandable sidebar of tabs (Home dashboard, Tokens, Buffs, Sequences, Navigation,
  *  Hive, Statistics, Performance, Settings). Every setting is the same one as before, just grouped by tab. All views
  *  are built in code; the macro itself runs in its services, so switching tabs never touches it. */
 public class MainActivity extends Activity {
     static final int BG = Ui.BG0, CARD = Ui.GLASS, PURPLE = Ui.PURPLE, BLUE = Ui.CYAN, TXT = Ui.TXT, DIM = Ui.DIM;
     final Handler h = new Handler(Looper.getMainLooper());
     Profile p;
-    TextView checks, hiveText, visionText, history, log, labelsText, histText, buffText, catText;
-    LinearLayout labelRows, reviewRows, catRows;
-    ImageView visionImg;
+    TextView checks, hiveText, history, log, labelsText, buffText, catText;
+    LinearLayout reviewRows, catRows;
     Switch overlaySwitch;
     LinearLayout root;   // the page being built: card() adds to it
 
     // ---- shell: rail + drawer + pages
     static final String[][] TABS = {
-            {"home", "🏠", "Home", "Dashboard"}, {"vision", "👁", "AI Vision", "Live detection & labelling"},
+            {"home", "🏠", "Home", "Dashboard"},
             {"tokens", "🪙", "Tokens", "Token recognition & collection"}, {"buffs", "✨", "Buffs", "Buff tracker"},
             {"seq", "🧩", "Sequences", "Field, pattern & sprinkler"}, {"nav", "🧭", "Navigation", "Guard, edges, drift & camera"},
             {"hive", "🍯", "Hive", "Hive, conversion & balloon"}, {"stats", "📊", "Statistics", "Honey & sessions"},
@@ -78,9 +77,8 @@ public class MainActivity extends Activity {
                 + "\nScreen " + w + " × " + h + " (" + String.format(java.util.Locale.US, "%.2f", w / (double) h) + ":1, "
                 + getResources().getDisplayMetrics().densityDpi + " dpi)";
     }
-    TextView heroSub, heroState, tPhase, tTimer, tBag, tHive, tLoops, tRate, tField, tPattern, aiText, visionCap, startLabel;
-    Ui.Bar bagBar; Ui.Pulse livePulse, scanPulse, railPulse; LinearLayout buffChips; ImageView dashFrame; View startGlow;
-    long dashFrameAt;
+    TextView heroSub, heroState, tPhase, tTimer, tBag, tHive, tLoops, tRate, tField, tPattern, aiText, startLabel;
+    Ui.Bar bagBar; Ui.Pulse livePulse, railPulse; LinearLayout buffChips; View startGlow;
     // ---- statistics + performance
     Ui.Chart honeyChart, rateChart, fpsChart, tempChart; TextView sTotal, sTime, sBest, sCount, pFps, pFrame, pTemp, pBatt, pRam;
     final double[] fpsHist = new double[60], tempHist = new double[60]; int perfN;
@@ -111,7 +109,7 @@ public class MainActivity extends Activity {
         frame.addView(buildDrawer(), new FrameLayout.LayoutParams(dp(250), -1));
         setContentView(frame);
 
-        buildHome(); buildVision(); buildTokens(); buildBuffs(); buildSequences(); buildNavigation();
+        buildHome(); buildTokens(); buildBuffs(); buildSequences(); buildNavigation();
         buildHive(); buildStats(); buildPerf(); buildSettings();
         for (View pg : pages.values()) pg.setVisibility(View.GONE);
         show("home", false);
@@ -215,7 +213,6 @@ public class MainActivity extends Activity {
             next.animate().alpha(1).translationY(0).setDuration(220).setInterpolator(Ui.EASE_OUT).start();
             if (prev != null) prev.animate().alpha(0).setDuration(120).setInterpolator(Ui.EASE_OUT).withEndAction(() -> { if (prev != current) prev.setVisibility(View.GONE); prev.setAlpha(1); }).start();
         } else { next.setAlpha(1); next.setTranslationY(0); if (prev != null) prev.setVisibility(View.GONE); }
-        if (key.equals("vision")) drawVision();
         if (key.equals("tokens")) { drawReview(); }
         refresh();
     }
@@ -289,24 +286,21 @@ public class MainActivity extends Activity {
         buffs.addView(tv("Read from the buff row while screen capture runs.", 11, DIM));
         pair(status, buffs);
 
-        // AI vision preview + decision
-        LinearLayout vp = card("AI vision");
-        LinearLayout scanRow = row(); scanPulse = new Ui.Pulse(this); scanRow.addView(scanPulse, new LinearLayout.LayoutParams(dp(16), dp(16)));
-        visionCap = tv("", 12, DIM); visionCap.setPadding(dp(4), 0, 0, 0); scanRow.addView(visionCap); vp.addView(scanRow);
-        dashFrame = new ImageView(this); dashFrame.setAdjustViewBounds(true); dashFrame.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        GradientDrawable fb = new GradientDrawable(); fb.setCornerRadius(dp(12)); fb.setColor(0x33000000); dashFrame.setBackground(fb); dashFrame.setClipToOutline(true);
-        LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(-1, -2); fl.topMargin = dp(6); vp.addView(dashFrame, fl);
-        vp.addView(button("Open AI Vision", 0, v -> show("vision", true)));
         LinearLayout dec = card("AI decision");
         aiText = tv("", 13, TXT); aiText.setLineSpacing(0, 1.2f); dec.addView(aiText);
-        pair(vp, dec);
 
         // setup / ready check (unchanged steps)
         LinearLayout c = card("Setup & ready check");
         checks = tv("", 13, TXT); checks.setLineSpacing(0, 1.25f); c.addView(checks);
         c.addView(button("1 · Enable input (Accessibility → Silly Macro)", PURPLE, v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))));
         c.addView(button("2 · Allow screen capture", PURPLE, v -> {
-            if (CaptureService.inst == null) startActivityForResult(getSystemService(MediaProjectionManager.class).createScreenCaptureIntent(), 7);
+            if (CaptureService.inst == null) {
+                MediaProjectionManager mpm = getSystemService(MediaProjectionManager.class);
+                // Android 14+ offers "A single app" first: the macro then sees a black screen ("dark", HUD not recognized). Ask for the whole screen.
+                startActivityForResult(android.os.Build.VERSION.SDK_INT >= 34
+                        ? mpm.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay())
+                        : mpm.createScreenCaptureIntent(), 7);
+            }
             else toast("Screen capture already running");
         }));
         c.addView(button("3 · Open Bee Swarm (your private server)", BLUE, v -> {
@@ -352,37 +346,7 @@ public class MainActivity extends Activity {
         if (li == null) { toast("Roblox not installed"); return; }
         startActivity(li);
         toast("Starting in Roblox…");
-        new Thread(() -> { SystemClock.sleep(3500); MacroService s = MacroService.inst; String why = s == null ? "input service stopped" : Engine.start(s); if (why != null) runOnUiThread(() -> toast(why)); }, "start").start();
-    }
-
-    // ------------------------------------------------------------------ AI Vision
-    void buildVision() {
-        page("vision");
-        LinearLayout vd = card("Live frame & labelling");
-        visionImg = new ImageView(this); visionImg.setAdjustViewBounds(true);
-        vd.addView(visionImg, new LinearLayout.LayoutParams(-1, -2));
-        visionText = tv("", 12, TXT); vd.addView(visionText);
-        vd.addView(button("Refresh frame", 0, v -> drawVision()));
-        vd.addView(tv("Tap Name… on a row to teach it. Label bees, flowers and other junk as Ignore so they stop showing. "
-                + "3–5 examples per token from different frames work best.", 12, DIM));
-        labelRows = new LinearLayout(this); labelRows.setOrientation(LinearLayout.VERTICAL); vd.addView(labelRows);
-        LinearLayout ai = card("Detection display");
-        ai.addView(tv("Boxes are drawn over the game while screen capture runs. Objects are matched against the reference catalog (wiki icons) "
-                + "and your verified in-game crops; a name is shown only after it held for 3 of 4 frames, otherwise \"Unknown\". "
-                + "Scores are template correlation (0–1). Screenshots never leave the device.", 12, DIM));
-        ai.addView(toggle("Draw detection boxes over the game", p.showBoxes, on -> { p.showBoxes = on; if (MacroService.inst != null) MacroService.inst.redrawBoxes(); }));
-        ai.addView(toggle("Show Unknown objects", p.showUnknown, on -> p.showUnknown = on));
-        for (Detector.Cat cat : new Detector.Cat[]{Detector.Cat.MARK, Detector.Cat.TOKEN, Detector.Cat.LOOT, Detector.Cat.BOOST, Detector.Cat.LANDMARK})
-            ai.addView(toggle("Show " + cat.name().toLowerCase(Locale.US) + " boxes", !p.hiddenCats.contains(cat.name()),
-                    on -> p.hiddenCats = on ? p.hiddenCats.replace(cat.name() + ",", "") : p.hiddenCats + cat.name() + ","));
-        ai.addView(stepper("Object threshold", () -> String.format(Locale.US, "%.2f", p.boxMinConf), d -> p.boxMinConf = Math.max(0.5, Math.min(0.99, Math.round((p.boxMinConf + d * 0.05) * 100) / 100.0))));
-        ai.addView(stepper("Box thickness", () -> p.boxThickness + " px", d -> p.boxThickness = clamp(p.boxThickness + d, 1, 8)));
-        ai.addView(stepper("Label size", () -> p.boxLabelSp + " sp", d -> p.boxLabelSp = clamp(p.boxLabelSp + d, 7, 18)));
-        ai.addView(stepper("Box opacity", () -> Math.round(p.boxAlpha * 100) + "%", d -> p.boxAlpha = Math.max(0.2f, Math.min(1f, Math.round((p.boxAlpha + d * 0.1f) * 10) / 10f))));
-        ai.addView(stepper("Vision min confidence", () -> Math.round(p.minConfidence * 100) + "%", d -> p.minConfidence = Math.max(0.5, Math.min(0.99, Math.round((p.minConfidence + d * 0.05) * 100) / 100.0))));
-        ai.addView(stepper("Player position on screen (y)", () -> Math.round(p.playerY * 100) + "%", d -> p.playerY = Math.max(0.3f, Math.min(0.8f, Math.round((p.playerY + d * 0.02f) * 100) / 100f))));
-        LinearLayout lb = card("Detection history");
-        histText = tv("", 11, DIM); histText.setTypeface(Typeface.MONOSPACE); lb.addView(histText);
+        new Thread(() -> { SystemClock.sleep(3500); MacroService s = MacroService.inst; String why = s == null ? "input service stopped" : Engine.start(s); if (why != null) { MacroService.startWhy = why; MacroService.startWhyAt = SystemClock.uptimeMillis(); runOnUiThread(() -> toast(why)); } }, "start").start();
     }
 
     // ------------------------------------------------------------------ Tokens
@@ -482,6 +446,8 @@ public class MainActivity extends Activity {
         LinearLayout g = card("Screen guard & field edges");
         g.addView(toggle("Screen guard: find the way back, get unstuck, reset if lost", p.navGuard, on -> p.navGuard = on));
         g.addView(toggle("Keep inside the field (edge detection and recovery)", p.edgeCorrect, on -> p.edgeCorrect = on));
+        g.addView(stepper("Vision min confidence", () -> Math.round(p.minConfidence * 100) + "%", d -> p.minConfidence = Math.max(0.5, Math.min(0.99, Math.round((p.minConfidence + d * 0.05) * 100) / 100.0))));
+        g.addView(stepper("Player position on screen (y)", () -> Math.round(p.playerY * 100) + "%", d -> p.playerY = Math.max(0.3f, Math.min(0.8f, Math.round((p.playerY + d * 0.02f) * 100) / 100f))));
         g.addView(stepper("Field edge safety margin", () -> p.fieldMargin + " cells", d -> p.fieldMargin = Math.max(3, Math.min(10, p.fieldMargin + d))));
         g.addView(toggle("Show detected field edges on screen", p.showFieldMap, on -> p.showFieldMap = on));
         g.addView(toggle("Automatic recovery (respawn & retry)", p.recovery, on -> p.recovery = on));
@@ -687,7 +653,7 @@ public class MainActivity extends Activity {
     final Runnable tick = new Runnable() { @Override public void run() { refresh(); h.postDelayed(this, 1000); } };
 
     @Override protected void onDestroy() { h.removeCallbacks(tick); super.onDestroy(); }
-    @Override protected void onResume() { super.onResume(); if (content == null) return; drawVision(); drawReview(); drawCatalog(""); }
+    @Override protected void onResume() { super.onResume(); if (content == null) return; drawReview(); drawCatalog(""); }
 
     @Override protected void onActivityResult(int req, int code, Intent data) {
         if (req == 7 && code == RESULT_OK && data != null)
@@ -724,19 +690,6 @@ public class MainActivity extends Activity {
             StringBuilder L = new StringBuilder();
             for (String l : lib.labels()) L.append(l).append(" — ").append(lib.count(l)).append(" example(s)\n");
             labelsText.setText(L.length() == 0 ? "No labels yet: every detection shows as Unknown." : L.toString().trim());
-        }
-        if (currentKey.equals("vision")) {
-            StringBuilder H = new StringBuilder("Recent objects (name · best score · seen · how it ended · where):\n");
-            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("HH:mm:ss", Locale.US);
-            long wallOff = System.currentTimeMillis() - SystemClock.uptimeMillis();
-            int n = 0;
-            synchronized (Monitor.tracker) {
-                for (Detector.Tracker.Ended e : Monitor.tracker.history) {
-                    if (n++ >= 25) break;
-                    H.append(String.format(Locale.US, "%s %s %.2f %.1fs %s (%d,%d)\n", f.format(new java.util.Date(e.last + wallOff)), e.label, e.conf, (e.last - e.first) / 1000.0, e.how, e.x, e.y));
-                }
-            }
-            histText.setText(n == 0 ? "No object history yet." : H.toString());
         }
         if (currentKey.equals("buffs")) {
             StringBuilder B = new StringBuilder();
@@ -776,16 +729,6 @@ public class MainActivity extends Activity {
             TextView c = tv((b.debuff ? "🔴 " : "✨ ") + b.name + (b.stack == null ? "" : " " + b.stack) + "\n" + Stats.fmt(SystemClock.uptimeMillis() - b.since), 12, TXT);
             c.setGravity(Gravity.CENTER); c.setPadding(dp(12), dp(8), dp(12), dp(8)); c.setBackground(Ui.glass(this, 14, true));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2); lp.setMargins(0, dp(4), dp(8), dp(4)); buffChips.addView(c, lp);
-        }
-        // vision preview (every 3 s while Home is visible)
-        boolean live = CaptureService.inst != null && Monitor.fps > 0;
-        scanPulse.set(live, live ? Ui.CYAN : Ui.FAINT);
-        visionCap.setText(live ? String.format(Locale.US, "Scanning · %.1f fps · %s", Monitor.fps, v == null ? "" : v.screen) : "Screen capture is off");
-        if (currentKey.equals("home") && SystemClock.uptimeMillis() - dashFrameAt > 3000 && Monitor.debugPx != null) {
-            dashFrameAt = SystemClock.uptimeMillis();
-            int w = Monitor.debugW, hh = Monitor.debugH, sc = Math.max(1, w / 640);
-            Bitmap full = Bitmap.createBitmap(Monitor.debugPx, w, hh, Bitmap.Config.ARGB_8888);
-            dashFrame.setImageBitmap(Bitmap.createScaledBitmap(full, w / sc, hh / sc, true)); full.recycle();
         }
         aiText.setText(running ? "▸ " + e.decision + (e.why.isEmpty() ? "" : "\n" + e.why) + (e.nextAction.isEmpty() ? "" : "\nNext: " + e.nextAction)
                 : "Waiting to start. The AI explains every step here while it farms.");
@@ -914,73 +857,10 @@ public class MainActivity extends Activity {
     void save(Detector.Det d, String name, Detector.Cat cat) {
         App.library(this).add(name, cat, d.buff, d.tpl); App.saveLibrary(this);
         Log.add("labels: +" + name + " (" + cat + (d.buff ? ", buff" : "") + ")");
-        toast("Saved: " + name); drawVision(); refresh();
+        toast("Saved: " + name); refresh();
     }
 
     void line(StringBuilder s, boolean ok, String t) { s.append(ok ? "✅ " : "⚠️ ").append(t).append('\n'); }
-
-    /** Draws the last analysed game frame with the regions the recognizer looked at. */
-    void drawVision() {
-        int[] px = Monitor.debugPx; Vision.Result r = Monitor.debugResult;
-        if (px == null || r == null) { visionText.setText("No game frame captured yet. Allow screen capture, open the game, then come back."); return; }
-        int w = Monitor.debugW, hh = Monitor.debugH, sc = 3;
-        Bitmap full = Bitmap.createBitmap(px, w, hh, Bitmap.Config.ARGB_8888);
-        Bitmap bm = Bitmap.createScaledBitmap(full, w / sc, hh / sc, true).copy(Bitmap.Config.ARGB_8888, true);
-        full.recycle();
-        Canvas cv = new Canvas(bm);
-        Paint pt = new Paint(); pt.setStyle(Paint.Style.STROKE); pt.setStrokeWidth(3);
-        box(cv, pt, Vision.BAR_X0, Vision.BAR_Y_HIGH - 0.01, Vision.BAR_X1, Vision.BAR_Y_LOW + 0.01, r.pollenConf >= p.minConfidence ? Color.GREEN : Color.RED, w / sc, hh / sc);
-        if (r.pollen >= 0) { pt.setColor(Color.YELLOW); float x = (float) ((Vision.BAR_X0 + (Vision.BAR_X1 - Vision.BAR_X0) * r.pollen / 100) * w / sc); cv.drawLine(x, 15, x, 50, pt); }
-        box(cv, pt, Vision.TAP_X0, Vision.BOX_Y0, Vision.BOX_X1, Vision.BOX_Y1, r.prompt != Vision.Prompt.NONE ? Color.CYAN : Color.GRAY, w / sc, hh / sc);
-        box(cv, pt, Vision.RESUME_X0, Vision.RESUME_Y0, Vision.RESUME_X1, Vision.RESUME_Y1, r.screen == Vision.Screen.MENU ? Color.MAGENTA : 0x55FFFFFF, w / sc, hh / sc);
-        pt.setColor(Color.WHITE); pt.setStyle(Paint.Style.FILL);
-        cv.drawCircle(p.joyX * w / sc, p.joyY * hh / sc, 6, pt); cv.drawCircle(p.camX * w / sc, p.camY * hh / sc, 6, pt);
-        pt.setColor(0xFFFACC15); cv.drawCircle(p.playerX * w / sc, p.playerY * hh / sc, 8, pt);   // where the AI thinks you stand
-        // detections of this frame (world) + every buff-row slot, re-scored with the current labels, numbered for naming
-        Detector.Library lib = App.library(this);
-        List<Detector.Det> rows = new java.util.ArrayList<>();
-        for (Detector.Det d : Monitor.debugDets) if (!d.buff && d.tpl != null) rows.add(d);
-        for (int k = 0; k < 22; k++) {
-            double s0 = w / 2340.0, x0 = (100 + 60 * k) * s0, sz = 58 * s0;
-            if (x0 + sz > 0.75 * w) break;
-            Detector.Det d = new Detector.Det(); d.buff = true; d.x0 = (int) x0; d.y0 = (int) (179 * hh / 1080.0); d.x1 = (int) (x0 + sz); d.y1 = (int) (d.y0 + sz);
-            d.tpl = Catalog.sample(px, w, hh, x0, d.y0, sz, sz);
-            Catalog cat = App.catalog(this);
-            if (cat != null) { Catalog.Match m = cat.match(px, w, hh, x0, d.y0, sz, sz, true, e -> e.buffRow(), lib.buffs());
-                if (m.best != null) { d.guess = m.best.name; d.guessScore = m.score; if (m.score >= p.buffMinConf && m.score - m.second >= 0.04) { d.label = m.best.name; d.conf = m.score; d.cat = Detector.Cat.BOOST; } } }
-            rows.add(d);
-        }
-        Paint tp = new Paint(Paint.ANTI_ALIAS_FLAG); tp.setTextSize(16); tp.setFakeBoldText(true);
-        labelRows.removeAllViews();
-        for (int i = 0; i < rows.size(); i++) {
-            Detector.Det d = rows.get(i);
-            int col = d.cat == Detector.Cat.IGNORE ? 0xFF555555 : Detector.COLOR[d.cat.ordinal()];
-            if (!d.buff) { pt.setStyle(Paint.Style.STROKE); pt.setColor(col); cv.drawRect(d.x0 / sc, d.y0 / sc, d.x1 / sc, d.y1 / sc, pt); tp.setColor(col); cv.drawText("#" + i, d.x0 / sc, d.y0 / sc - 3, tp); }
-            LinearLayout rw = row();
-            ImageView th = new ImageView(this);
-            int cw = Math.max(1, d.x1 - d.x0), ch = Math.max(1, d.y1 - d.y0);
-            Bitmap crop = Bitmap.createBitmap(px, Math.max(0, d.y0) * w + Math.max(0, d.x0), w, Math.min(cw, w - d.x0), Math.min(ch, hh - d.y0), Bitmap.Config.ARGB_8888);
-            th.setImageBitmap(crop); th.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            rw.addView(th, new LinearLayout.LayoutParams(dp(44), dp(44)));
-            TextView t = tv(String.format(Locale.US, " %s%s  %s  %.2f", d.buff ? "buff slot " : "#", d.buff ? String.valueOf(k(d, w)) : String.valueOf(i),
-                    d.cat == Detector.Cat.IGNORE ? "Ignore" : d.label + (d.cat == Detector.Cat.UNKNOWN && d.guess != null ? " (best guess " + d.guess + ")" : ""), d.cat == Detector.Cat.UNKNOWN ? d.guessScore : d.conf), 13, d.cat == Detector.Cat.UNKNOWN ? DIM : TXT);
-            rw.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
-            Button nb = button("Name…", 0, v -> nameDialog(d)); nb.setTextSize(12);
-            rw.addView(nb, new LinearLayout.LayoutParams(dp(90), dp(44)));
-            labelRows.addView(rw);
-        }
-        visionImg.setImageBitmap(bm);
-        Engine e = Engine.inst;
-        visionText.setText(String.format(Locale.US, "Frame %dx%d, %ds ago\n%s\nLocation estimate: %s\nState: %s%s",
-                w, hh, (SystemClock.uptimeMillis() - Monitor.debugTime) / 1000, r.summary(),
-                e != null && !e.finished() ? e.nav : r.prompt != Vision.Prompt.NONE ? "at a hive (prompt visible)" : "unknown (not at hive)",
-                e != null && !e.finished() ? e.phase : "idle",
-                r.screen != Vision.Screen.GAME ? "\nRecognition error: game HUD not found" : r.pollenConf < p.minConfidence ? "\nRecognition error: backpack bar low confidence" : ""));
-    }
-
-    static int k(Detector.Det d, int w) { return (int) Math.round((d.x0 * 2340.0 / w - 100) / 60); }
-
-    static void box(Canvas c, Paint pt, double x0, double y0, double x1, double y1, int col, int w, int h) { pt.setColor(col); pt.setStyle(Paint.Style.STROKE); c.drawRect((float) x0 * w, (float) y0 * h, (float) x1 * w, (float) y1 * h, pt); }
 
     // ------------------------------------------------------------------ view helpers (same API as before, new look)
     interface IntOp { void step(int d); }

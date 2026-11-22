@@ -34,7 +34,6 @@ final class Monitor {
     static volatile long lastFrameMs;
     static volatile String state = "off";            // shown in the panel: never claims analysis that isn't running
     static volatile List<int[]> ignore = new ArrayList<>();
-    static volatile Runnable onFrame;
     static volatile Remap.Out remap;
     static volatile int[] thumb; static volatile long thumbTime;   // Align thumbnail of the latest raw frame                 // last frame's layout mapping (overlay draws through it)
     static List<int[]> ignoreRemapped(Remap.Out ro) { if (!ro.tablet && !ro.phone) return ignore; List<int[]> o = new ArrayList<>(); for (int[] r : ignore) o.add(Remap.fromScreen(ro, r)); return o; }
@@ -190,7 +189,6 @@ final class Monitor {
                     last = r; lastTime = SystemClock.uptimeMillis(); frames++;
                     lastFrameMs = lastTime - t0;
                     if (r.w > r.h && lastTime - debugTime > 3000) { debugPx = fpx0.clone(); debugW = fw0; debugH = fh0; debugResult = r; debugDets = dets; debugTime = lastTime; }
-                    Runnable of = onFrame; if (of != null) of.run();
                 }
                 long now = SystemClock.uptimeMillis();
                 if (now - winStart >= 2000) {
@@ -198,7 +196,7 @@ final class Monitor {
                     if (now - lastFpsLog > 30_000) { lastFpsLog = now; Log.add(String.format(Locale.US, "vision: %.1f fps, last frame %d ms, %s, %d tracks", fps, lastFrameMs, state, tracker.snapshot().size())); }
                 }
                 boolean busy = Engine.inst != null && !Engine.inst.finished();
-                long period = busy || (p.showBoxes && MacroService.inst != null) ? 1000 / Math.max(1, p.detectFps) : p.batterySaver ? 1000 : 300;
+                long period = busy ? 1000 / Math.max(1, p.detectFps) : p.batterySaver ? 1000 : 300;
                 SystemClock.sleep(Math.max(10, period - (now - t0)));
             }
         }, "vision");
