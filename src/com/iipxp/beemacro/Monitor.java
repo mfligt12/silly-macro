@@ -17,6 +17,8 @@ final class Monitor {
     static volatile long lastTime;
     static volatile int[] debugPx; static volatile int debugW, debugH; static volatile long debugTime;
     /** One raw frame on request (Discord screenshots): set shotWanted, the next frame is copied here. */
+    /** Red error banner check on the next raw frame (sprinkler placement). */
+    static volatile boolean bannerWanted; static volatile int bannerRows; static volatile long bannerTime;
     static volatile boolean shotWanted; static volatile int[] shotPx; static volatile int shotW, shotH; static volatile long shotTime;
     static volatile Vision.Result debugResult;
     static volatile List<Detector.Det> debugDets = new ArrayList<>();
@@ -91,6 +93,7 @@ final class Monitor {
                 if (f == null) state = "no frame from capture";
                 else {
                     if (shotWanted) { shotPx = f.px.clone(); shotW = f.w; shotH = f.h; shotWanted = false; shotTime = SystemClock.uptimeMillis(); }
+                    if (bannerWanted) { bannerRows = Vision.redBannerRows(f.px, f.w, f.h); bannerWanted = false; bannerTime = SystemClock.uptimeMillis(); }
                     String save = saveFrame;
                     if (save != null) {
                         saveFrame = null;

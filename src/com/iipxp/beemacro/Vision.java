@@ -312,6 +312,30 @@ public final class Vision {
         "...........................",
         "...........................",
     };
+    /** Rows of a solid red message banner in the message log (bottom right), e.g. "You must be standing in a field to
+     *  build a Sprinkler". Long unbroken red runs only (white text inside keeps a run going), so red flowers don't count. */
+    public static int redBannerRows(int[] px, int w, int h) {
+        // the log sits low on the right; a banner row is a long red run with white letters inside it (a red platform
+        // rim or roof has no text)
+        int rows = 0, minRun = (int) (0.09 * w), minText = Math.max(6, w / 230);
+        for (int y = (int) (h * 0.78); y < (int) (h * 0.995); y += 2) {
+            int red = 0, white = 0, gap = 0, start = -1;
+            for (int x = (int) (w * 0.55); x <= w; x++) {
+                int r = 0, g = 0, b = 0;
+                if (x < w) { int p = px[y * w + x]; r = (p >> 16) & 255; g = (p >> 8) & 255; b = p & 255; }
+                boolean isRed = x < w && r > 170 && g < 115 && b < 115 && r - g > 80, isWhite = x < w && r > 200 && g > 200 && b > 200;
+                if (isRed || (start >= 0 && isWhite)) { if (start < 0) start = x; if (isRed) red++; else white++; gap = 0; continue; }
+                if (start >= 0 && ++gap <= 6) continue;   // soft letter edges inside the banner
+                if (start >= 0) {
+                    int span = x - gap - start;
+                    if (span >= minRun && white >= minText && red >= 0.55 * span) { rows++; break; }
+                }
+                red = 0; white = 0; gap = 0; start = -1;
+            }
+        }
+        return rows;
+    }
+
     public static int hasteSlot(int[] px, int w, int h) { return (int) hasteMatch(px, w, h)[0]; }
     /** {first slot or -1, its share of the running-figure mask that matched (the detection score), number of Haste icons}. */
     public static double[] hasteMatch(int[] px, int w, int h) {

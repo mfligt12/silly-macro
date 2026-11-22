@@ -1,3 +1,4 @@
+import com.iipxp.beemacro.VisualAnchor;
 import com.iipxp.beemacro.Buffs;
 import com.iipxp.beemacro.Catalog;
 import com.iipxp.beemacro.Detector;
@@ -344,6 +345,34 @@ public class SelfTest {
           java.util.List<Moves.Step> d = new java.util.ArrayList<>(); d.add(new Moves.Step('R', null, 0, 1, null)); d.addAll(l);
           check(e[0] == 0 && e[1] == 2 && e[2] == 0 && e[3] == 3 && Math.abs(et[0] + 2) < 1e-9 && Math.abs(et[2] + 3) < 1e-9 && et[1] == 0 && et[3] == 0 && Patterns.extent(d) == null,
                 "patterns: reach from the start (corner line-up) " + java.util.Arrays.toString(e) + ", turned 180° " + java.util.Arrays.toString(et) + ", 45° = none"); }
+        { // Bee Swarm's red "You must be standing in a field to build a Sprinkler" banner: found on that frame only
+          int refused = 0, worst = 0; String worstF = "";
+          for (File f : new File("test/fixtures").listFiles()) {
+              if (!f.getName().startsWith("tab_") || !f.getName().endsWith(".png")) continue;
+              BufferedImage im = ImageIO.read(f); int iw = im.getWidth(), ih = im.getHeight();
+              int rows = Vision.redBannerRows(im.getRGB(0, 0, iw, ih, null, 0, iw), iw, ih);
+              if (f.getName().equals("tab_sprinkler_refused.png")) refused = rows;
+              else if (rows > worst) { worst = rows; worstF = f.getName(); }
+          }
+          check(refused >= 4 && worst < 4, "sprinkler refused: red banner rows " + refused + " on the refusal frame, at most " + worst + " elsewhere " + worstF + " (roses next to the field don't count)"); }
+        { // drift by sight: a known slide of the world is measured back, with the HUD and the character left in place
+          StringBuilder res = new StringBuilder(); boolean ok = true;
+          for (String fx : new String[]{"tab_field_middle.png", "tab_under_tree.png", "tab_outside_grass.png"}) {
+              BufferedImage fm = ImageIO.read(new File("test/fixtures/" + fx));
+              Remap.Out o = Remap.apply(fm.getRGB(0, 0, fm.getWidth(), fm.getHeight(), null, 0, fm.getWidth()), fm.getWidth(), fm.getHeight());
+              int W = o.w, H = o.h; double plx = 0.486, ply = 0.73;
+              VisualAnchor anc = new VisualAnchor(o.px, W, H, plx, ply);
+              double[] same0 = anc.shiftTo(new VisualAnchor(o.px, W, H, plx, ply), 0.30);
+              ok &= same0[0] == 0 && same0[1] == 0 && same0[2] > 0.99;
+              for (int[] d : new int[][]{{48, -32}, {-96, 40}, {16, 88}}) {
+                  int[] b = slide(o.px, W, H, d[0], d[1], plx, ply, d[0] == 16 ? 0.7 : 1.0, d[0] == -96);
+                  double[] s = anc.shiftTo(new VisualAnchor(b, W, H, plx, ply), 0.30);
+                  boolean good = Math.abs(s[0] - d[0]) <= 8 && Math.abs(s[1] - d[1]) <= 8 && s[2] > 0.6;
+                  ok &= good;
+                  res.append(String.format(java.util.Locale.US, " %s %+d/%+d→%+.0f/%+.0f (%.2f)%s", fx.replace("tab_", "").replace(".png", ""), d[0], d[1], s[0], s[1], s[2], good ? "" : "!"));
+              }
+          }
+          check(ok, "drift by sight: slides measured back within 8 px (HUD and character fixed, one dimmed, one with a bee swarm):" + res); }
         // ---- sprinkler: learned from a before/after pair, then found again elsewhere (synthetic sprinkler on a real field frame)
         { BufferedImage fm = ImageIO.read(new File("test/fixtures/tab_field_middle.png"));
           Remap.Out o = Remap.apply(fm.getRGB(0, 0, fm.getWidth(), fm.getHeight(), null, 0, fm.getWidth()), fm.getWidth(), fm.getHeight());
@@ -544,6 +573,26 @@ public class SelfTest {
     }
 
     /** A made-up sprinkler (grey body, dark centre, four gold nozzles) drawn into a frame, for the finder test. */
+    /** The world slid by (dx, dy) while the HUD and the character stay put (what drift looks like on screen);
+     *  `dim` scales brightness (day/night), `swarm` sprinkles moving bee-coloured dots everywhere. */
+    static int[] slide(int[] px, int w, int h, int dx, int dy, double plx, double ply, double dim, boolean swarm) {
+        int[] out = px.clone();
+        java.util.Random rnd = new java.util.Random(7);
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+            double fx = (double) x / w, fy = (double) y / h;
+            boolean world = fx > 0.03 && fx < 0.84 && fy > 0.16 && fy < 0.84 && !(Math.abs(fx - plx) < 0.06 && fy > ply - 0.2 && fy < ply + 0.05);
+            int sx = Math.min(w - 1, Math.max(0, x - dx)), sy = Math.min(h - 1, Math.max(0, y - dy));
+            int p = world ? px[sy * w + sx] : px[y * w + x];
+            if (dim != 1.0) { int r = (int) (((p >> 16) & 255) * dim), g = (int) (((p >> 8) & 255) * dim), b = (int) ((p & 255) * dim); p = 0xFF000000 | r << 16 | g << 8 | b; }
+            out[y * w + x] = p;
+        }
+        if (swarm) for (int i = 0; i < 400; i++) {   // bees: small yellow/black blobs
+            int cx = rnd.nextInt(w), cy = (int) (h * (0.2 + 0.6 * rnd.nextDouble())), col = rnd.nextBoolean() ? 0xFFF2C230 : 0xFF202020;
+            for (int y = cy - 6; y < cy + 6; y++) for (int x = cx - 8; x < cx + 8; x++) if (x >= 0 && y >= 0 && x < w && y < h) out[y * w + x] = col;
+        }
+        return out;
+    }
+
     static void drawSprinkler(int[] px, int w, int cx, int cy) {
         for (int y = -34; y <= 34; y++) for (int x = -34; x <= 34; x++) {
             double r = Math.hypot(x, y); int c;

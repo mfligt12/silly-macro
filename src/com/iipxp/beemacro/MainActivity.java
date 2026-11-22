@@ -459,6 +459,7 @@ public class MainActivity extends Activity {
         sl.setOnClickListener(v -> { int i = java.util.Arrays.asList(locs).indexOf(p.sprinklerLoc); p.sprinklerLoc = locs[(i + 1) % locs.length]; App.save(this); sl.setText("Sprinkler spot: " + p.sprinklerLoc); });
         sc.addView(sl);
         sc.addView(toggle("Corner spots: patterns line up in that corner every loop, like Skillet (Pine Tree: under the tree)", p.cornerAnchor, on -> p.cornerAnchor = on));
+        sc.addView(toggle("Drift fix by sight: remember the view where farming starts, walk back to it after every loop", p.visualAnchor, on -> p.visualAnchor = on));
     }
 
     // ------------------------------------------------------------------ Navigation

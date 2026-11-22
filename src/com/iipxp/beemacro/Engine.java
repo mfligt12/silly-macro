@@ -268,7 +268,7 @@ final class Engine implements Runnable {
         if (p.navGuard && Routes.blueField(p.field) && !seekPine(10_000, "arrival")) throw new Recover("no " + fname + " flowers in sight after the walk");
         // The walk ends near the middle of the field: place the sprinkler here (Natro's walk to a corner climbs the hedge).
         // Corner mode places it later, at the pattern's start in the corner.
-        if (!cornerPlanned()) placeSprinkler();
+        if (!cornerWanted()) placeSprinkler();
         if (p.fieldRotate != 0) in.rotate(p.fieldRotate);   // Natro: field camera turns before the pattern
         phase("Farming", "farm"); nav = fname + " (verifying)";
         if (p.toolHold) in.toolHold(true);
@@ -284,19 +284,52 @@ final class Engine implements Runnable {
 
     /** The character must be standing still on the ground: settle, press the slot key long enough for a frame to
      *  see it, then once more (a second press just re-places it on the same spot, so a missed first press is covered). */
-    private void placeSprinkler() { placeSprinkler(true); }
-    private void placeSprinkler(boolean walk) {
-        sprinkler = null;
+    private void placeSprinkler() { placeSprinkler(true, inwardKeys()); }
+    /** Keys that lead from the sprinkler spot back into the field (before the field camera turns). */
+    private Moves.Key[] inwardKeys() {
+        String l = p.sprinklerLoc; java.util.List<Moves.Key> k = new java.util.ArrayList<>();
+        if (l.contains("Upper")) k.add(Moves.Key.S); else if (l.contains("Lower")) k.add(Moves.Key.W);
+        if (l.contains("Left")) k.add(Moves.Key.D); else if (l.contains("Right")) k.add(Moves.Key.A);
+        return k.isEmpty() ? new Moves.Key[]{Moves.Key.S} : k.toArray(new Moves.Key[0]);
+    }
+    /** Press the sprinkler key; if Bee Swarm answers with its red "You must be standing in a field" banner, step
+     *  further into the field and try again (up to 3 times). Returns whether it was placed (no banner seen). */
+    private boolean pressSprinkler(Moves.Key[] inward) {
+        int code = android.view.KeyEvent.KEYCODE_1 + p.sprinklerSlot - 1;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            sleep(600);
+            boolean a = in.key(code, 150); sleep(800);
+            int rows = redBanner();
+            if (rows < 4) {
+                boolean b = in.key(code, 150); sleep(400);
+                Log.add("sprinkler: placed with key " + p.sprinklerSlot + (attempt > 1 ? " on try " + attempt : "") + " (" + (a ? "sent" : "NOT sent") + ", " + (b ? "sent" : "NOT sent") + ")");
+                sprinklerPlaced = true;
+                return true;
+            }
+            stats.corrections++; saveGuardFrame("sprinkler_refused");
+            Log.add("sprinkler: Bee Swarm says we're not standing in the field (try " + attempt + "), stepping 2 tiles in");
+            walkHold(new Moves.Step('H', inward, 1.0, (int) Moves.tileMs(2, p.moveSpeed), null));
+            long t0 = SystemClock.uptimeMillis();   // let the old banner fade so it isn't read as a new refusal
+            while (redBanner() >= 4 && SystemClock.uptimeMillis() - t0 < 6000) sleep(400);
+        }
+        Log.add("sprinkler: still refused after 3 tries, farming without it");
+        return false;
+    }
+    /** Rows of a red error banner on the next frame (0 if none or no frame in 1.5 s). */
+    private int redBanner() {
+        long since = Monitor.bannerTime; Monitor.bannerWanted = true;
+        long end = SystemClock.uptimeMillis() + 1500;
+        while (Monitor.bannerTime == since && SystemClock.uptimeMillis() < end) SystemClock.sleep(40);
+        return Monitor.bannerTime == since ? 0 : Monitor.bannerRows;
+    }
+    private boolean sprinklerPlaced;
+    private void placeSprinkler(boolean walk, Moves.Key[] inward) {
+        sprinkler = null; sprinklerPlaced = false;
         if (walk) walkToSprinklerSpot();
         boolean learn = p.sprinklerAnchor && p.keyboard();
         int[] before = null;
         if (learn) { in.hold(MacroService.set(new Moves.Key[]{Moves.Key.S}), Moves.tileMs(3, p.moveSpeed)); sleep(500); before = frames3(); in.hold(MacroService.set(new Moves.Key[]{Moves.Key.W}), Moves.tileMs(3, p.moveSpeed)); }
-        int code = android.view.KeyEvent.KEYCODE_1 + p.sprinklerSlot - 1;
-        sleep(600);
-        boolean a = in.key(code, 150); sleep(900);
-        boolean b = in.key(code, 150); sleep(400);
-        Log.add("sprinkler: key " + p.sprinklerSlot + " pressed twice (" + (a ? "sent" : "NOT sent") + ", " + (b ? "sent" : "NOT sent") + ")");
-        if (!learn) return;
+        if (!pressSprinkler(inward) || !learn) return;
         // step back 3 tiles again: the sprinkler is now on the spot just photographed empty
         in.hold(MacroService.set(new Moves.Key[]{Moves.Key.S}), Moves.tileMs(3, p.moveSpeed)); sleep(500);
         int[] after = frames3();
@@ -594,7 +627,7 @@ final class Engine implements Runnable {
 
     /** A pattern step that would run into a nearby edge is skipped; the correction below then turns us back. */
     private boolean stepBlocked(Moves.Step s) {
-        if (!fieldOn() || s.type != 'W' || s.keys == null || corner != null) return false;   // corner mode: the walls keep the pattern in
+        if (!fieldOn() || s.type != 'W' || s.keys == null || wallBound()) return false;   // corner mode / Skillet: the walls keep the pattern in
         int x = stepX(s.keys), y = stepY(s.keys);
         moveDir = dirName(x, y);
         FieldMap.Read r = Monitor.fieldTrack.steady(SystemClock.uptimeMillis());
@@ -616,7 +649,7 @@ final class Engine implements Runnable {
         }
         outsideSince = 0;
         if (r.state == FieldMap.State.INSIDE && r.fieldCells >= 40) { lastInX = r.cx; lastInY = r.cy; lastInYaw = patYaw; haveLastIn = true; }
-        if (corner != null) return;   // corner mode: no edge steering (it pulled patterns out from under the tree); outside = recovery above
+        if (wallBound()) return;   // no edge steering at a walled corner (it pulled patterns out from under the tree); outside = recovery above
         fieldCtl.margin = p.fieldMargin;
         double v = speedNow(1.0);
         FieldMap.Controller.Move m = fieldCtl.update(r, now, v > 0 ? v : 1);
@@ -760,6 +793,8 @@ final class Engine implements Runnable {
         return prev;
     }
     private double candSpeed = Double.NaN, hasteMul = 1; private long candTime;
+    /** Walk speed confirmed on the last walk, carried into the next one. */
+    private double liveSpeed = 1.0;
     /** Live speed multiple: Haste stacks plus Coconut Haste, Bear Morph, Oil and Super Smoothie (Natro's formula, Moves.speedFactor). */
     private double speedFactor(Vision.Result r, double hasteMul) {
         boolean bear = false, oil = false, smoothie = false;
@@ -799,7 +834,7 @@ final class Engine implements Runnable {
         final double[] left = {s.count * s.tiles};          // ms of base-speed walking still to go
         final double total = s.count * s.tiles; final double[] moved = {0};   // ms of base-speed walking seen to move
         final boolean[] walled = {false};
-        double v = 1.0;
+        double v = liveSpeed;   // the speed read on the last step: a new step must not start at x1.0 and overshoot
         while (left[0] > 20) {
             checkpoint();
             v = waitForReadableSpeed(v);
@@ -854,6 +889,7 @@ final class Engine implements Runnable {
             }
             if (left[0] > 20) { long ms = Math.round(left[0] / v); if (!in.hold(keys, ms)) return false; left[0] = 0; }
         }
+        liveSpeed = v;
         return true;
     }
 
@@ -1171,7 +1207,86 @@ final class Engine implements Runnable {
         List<Moves.Step> sk = farmPattern();
         hasteFix = natroPattern ? p.hastePatterns : p.hasteAdjustSkillet;
         corner = natroPattern && cornerPlanned() ? cornerPlan(sk) : null;
-        try { farmLoop(sk); } finally { hasteFix = false; corner = null; }
+        if (corner == null && cornerWanted()) {   // corner mode was planned but can't run: place the sprinkler the normal way (before the camera turn, like Natro)
+            if (p.fieldRotate != 0) in.rotate(-p.fieldRotate);
+            placeSprinkler();
+            if (p.fieldRotate != 0) in.rotate(p.fieldRotate);
+        }
+        // Pine Tree's corner is under the leaves: look up under them like Skillet does (RotUp 4), or the screen is all leaves
+        int tilt = corner != null && p.field.equals("pinetree") ? 4 : 0;
+        if (tilt != 0) { in.tilt(tilt); Log.add("corner: camera tilted up " + tilt + " to see under the tree"); }
+        try { farmLoop(sk); } finally { hasteFix = false; corner = null; anchorRef = null; if (tilt != 0) in.tilt(-tilt); }
+    }
+    /** Corner mode will be used this trip: corner sprinkler spot and a Natro pattern (Skillet lines up by itself). */
+    private boolean cornerWanted() {
+        if (!cornerPlanned() || p.pattern.equals("Skillet")) return false;
+        try (java.io.InputStream is = in.getAssets().open("patterns/" + p.pattern + ".ahk")) { return true; } catch (Exception e) { return false; }
+    }
+    /** The hedges keep us in: corner mode, or Skillet at a corner spot (it walks into them on purpose). No edge steering then. */
+    private boolean wallBound() { return corner != null || (!natroPattern && cornerPlanned()); }
+
+    // ---- drift by sight: loop closure against the view where farming started (VisualAnchor)
+    private VisualAnchor anchorRef; private int anchorMiss;
+    /** The view now as an anchor (median of 3 frames when steady, else one fresh frame), or null. */
+    private VisualAnchor view(boolean steady) {
+        Remap.Out ro = Monitor.remap;
+        int[] px;
+        if (steady) px = frames3();
+        else { Vision.Result f = Monitor.fresh(SystemClock.uptimeMillis(), 900); ro = Monitor.remap; px = f == null || ro == null ? null : ro.px.clone(); }
+        if (px == null || ro == null || px.length != ro.w * ro.h) return null;
+        return new VisualAnchor(px, ro.w, ro.h, p.playerX, p.playerY);
+    }
+    private void setAnchor() {
+        anchorRef = null; anchorMiss = 0;
+        if (!p.visualAnchor) return;
+        VisualAnchor a = view(true);
+        if (a == null || !a.usable()) { Log.add("anchor: view too plain to remember" + (a == null ? " (no frames)" : String.format(Locale.US, " (texture %.1f)", a.texture))); return; }
+        anchorRef = a;
+        Log.add(String.format(Locale.US, "anchor: remembered the view where farming starts (texture %.1f)", a.texture));
+    }
+    /** After a loop: how far has the scene slid from the remembered view? Walk back until it lines up again, re-measuring
+     *  after every short press; stop if it gets worse twice (never trust a wrong direction) or the match is lost.
+     *  Returns false when the view no longer matches (the caller falls back to the sprinkler check). */
+    private boolean anchorCorrect() {
+        VisualAnchor now = view(true);
+        if (now == null) return false;
+        double[] s = anchorRef.shiftTo(now, 0.30);
+        int h = now.h; double tol = 0.035;
+        if (s[2] < 0.55) {
+            if (++anchorMiss >= 3) { Log.add(String.format(Locale.US, "anchor: view changed for 3 loops (match %.2f), remembering this spot instead", s[2])); setAnchor(); }
+            else Log.add(String.format(Locale.US, "anchor: no match this loop (%.2f)", s[2]));
+            return false;
+        }
+        anchorMiss = 0;
+        double off = Math.hypot(s[0], s[1]) / h;
+        if (off <= tol) { prevResult = String.format(Locale.US, "on the start spot (view %.1f%% off, match %.2f)", off * 100, s[2]); return true; }
+        String was = phase; phase = "Correcting drift";
+        decide("Correcting drift", "The view has slid since the start of farming: walking back to where the pattern started.",
+                String.format(Locale.US, "scene moved %+.0f / %+.0f px (match %.2f)", s[0], s[1], s[2]), "resume the pattern", s[2]);
+        double first = off, last = off; int worse = 0; long walked = 0;
+        while (walked < 4500) {
+            checkpoint();
+            EnumSet<Moves.Key> ks = EnumSet.noneOf(Moves.Key.class);
+            // the scene slid right = we went left: walk right; slid down = we went forward: walk back
+            if (Math.abs(s[0]) > 0.4 * Math.abs(s[1])) ks.add(s[0] > 0 ? Moves.Key.D : Moves.Key.A);
+            if (Math.abs(s[1]) > 0.4 * Math.abs(s[0])) ks.add(s[1] > 0 ? Moves.Key.S : Moves.Key.W);
+            long press = off > 0.12 ? 220 : 140;
+            if (!in.hold(ks, press)) break;
+            walked += press; sleep(90);
+            VisualAnchor v = view(false);
+            if (v == null) break;
+            s = anchorRef.shiftTo(v, 0.30);
+            if (s[2] < 0.5) { Log.add(String.format(Locale.US, "anchor: lost the match while correcting (%.2f)", s[2])); break; }
+            off = Math.hypot(s[0], s[1]) / h;
+            if (off <= tol * 0.6) break;
+            if (off > last + 0.006) { if (++worse >= 2) { Log.add("anchor: getting further away, stopped (wrong way?)"); break; } } else worse = 0;
+            last = off;
+        }
+        stats.corrections++;
+        phase = was; Monitor.fieldTrack.clear();
+        prevResult = String.format(Locale.US, "drift by sight: %.1f%% → %.1f%% of the screen in %d ms", first * 100, off * 100, walked);
+        Log.add("drift: " + prevResult);
+        return true;
     }
 
     // ---- corner mode: a Natro pattern lined up in the sprinkler's corner every loop (like Skillet's wall alignment)
@@ -1204,7 +1319,7 @@ final class Engine implements Runnable {
         walkHold(new Moves.Step('H', new Moves.Key[]{Moves.flip(kx)}, 1.0, (int) Moves.tileMs((double) corner[2], p.moveSpeed), null));
         checkpoint();
         phase = was; Monitor.fieldTrack.clear();
-        if (first) { placeSprinkler(false); Monitor.fieldTrack.clear(); }   // the sprinkler sits where the pattern starts
+        if (first) { placeSprinkler(false, new Moves.Key[]{Moves.flip(ky), Moves.flip(kx)}); Monitor.fieldTrack.clear(); }   // the sprinkler sits where the pattern starts
     }
     /** Hold one key until the character stands still against a wall (ms walked), or -1 if no wall within ~30 tiles.
      *  Never jumps: a jump at the hedge is what climbed it. */
@@ -1237,6 +1352,7 @@ final class Engine implements Runnable {
         lastRise = t0; outsideSince = 0; farmStart = t0; patYaw = 0; haveLastIn = false; Monitor.fieldTrack.clear(); wrongSince = 0; wrongSeen = 0;
         for (int loop = 1; ; loop++) {
             if (corner != null) cornerAlign(loop == 1);
+            if (loop == 1 && corner == null) { if (!sprinklerPlaced) Log.add("farm: no sprinkler placed this trip"); setAnchor(); }
             for (int i = 0; i < sk.size(); i++) {
                 checkpoint();
                 Moves.Step s = sk.get(i);
@@ -1263,7 +1379,8 @@ final class Engine implements Runnable {
             stats.loops++;
             if (Monitor.honey > 0) stats.honey(Monitor.honey);
             if (stats.loops % 5 == 0) Stats.saveCurrent(in, stats);
-            if (corner == null) correctDrift();   // corner mode re-lines up on the walls every loop instead
+            // corner mode re-lines up on the walls every loop instead; otherwise loop closure by sight, then the sprinkler
+            if (corner == null && !(anchorRef != null && anchorCorrect())) correctDrift();
             if (loop == 2) {   // 1 bar pixel ≈ 0.24%; a big bag can need ~2 loops to show any rise
                 Vision.Result r = waitFor(this::bagKnown, 3000);
                 if (p.keyboard()) { /* the bag % can fall when capacity grows: the field guard watches this instead */ }
