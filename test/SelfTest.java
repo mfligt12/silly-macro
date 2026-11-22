@@ -336,6 +336,14 @@ public class SelfTest {
           java.util.List<Moves.Step> pst = Patterns.steps(psrc, 1.5, 3, false, false, true, 33.35);
           check(pst.get(0).toString().equals("D 6.0t") && pst.get(1).toString().equals("W 3.0t") && pst.get(2).toString().equals("A 12.0t") && pst.get(5).keys.length == 2,
                 "patterns: CornerXSnake size L, left/right inverted = D 6, W 3, A 12 … then a diagonal (" + pst.get(0) + ", " + pst.get(1) + ", " + pst.get(2) + ")"); }
+        { // pattern reach, for lining up in a corner: an L of 3 forward then 2 right reaches right 2 / forward 3; turned 180° it is mirrored
+          java.util.List<Moves.Step> l = Patterns.steps("send \"{\" FwdKey \" down}\"\nWalk(3)\nsend \"{\" FwdKey \" up}{\" RightKey \" down}\"\nWalk(2)\nsend \"{\" RightKey \" up}\"", 1, 1, false, false, false, 33.35);
+          double[] e = Patterns.extent(l);
+          java.util.List<Moves.Step> t = new java.util.ArrayList<>(); t.add(new Moves.Step('R', null, 0, 4, null)); t.addAll(l);
+          double[] et = Patterns.extent(t);
+          java.util.List<Moves.Step> d = new java.util.ArrayList<>(); d.add(new Moves.Step('R', null, 0, 1, null)); d.addAll(l);
+          check(e[0] == 0 && e[1] == 2 && e[2] == 0 && e[3] == 3 && Math.abs(et[0] + 2) < 1e-9 && Math.abs(et[2] + 3) < 1e-9 && et[1] == 0 && et[3] == 0 && Patterns.extent(d) == null,
+                "patterns: reach from the start (corner line-up) " + java.util.Arrays.toString(e) + ", turned 180° " + java.util.Arrays.toString(et) + ", 45° = none"); }
         // ---- sprinkler: learned from a before/after pair, then found again elsewhere (synthetic sprinkler on a real field frame)
         { BufferedImage fm = ImageIO.read(new File("test/fixtures/tab_field_middle.png"));
           Remap.Out o = Remap.apply(fm.getRGB(0, 0, fm.getWidth(), fm.getHeight(), null, 0, fm.getWidth()), fm.getWidth(), fm.getHeight());

@@ -266,8 +266,9 @@ final class Engine implements Runnable {
         sleep(800);
         // blue/white fields only: the flower check knows Pine Tree-like flowers
         if (p.navGuard && Routes.blueField(p.field) && !seekPine(10_000, "arrival")) throw new Recover("no " + fname + " flowers in sight after the walk");
-        // The walk ends near the middle of the field: place the sprinkler here (Natro's walk to a corner climbs the hedge)
-        placeSprinkler();
+        // The walk ends near the middle of the field: place the sprinkler here (Natro's walk to a corner climbs the hedge).
+        // Corner mode places it later, at the pattern's start in the corner.
+        if (!cornerPlanned()) placeSprinkler();
         if (p.fieldRotate != 0) in.rotate(p.fieldRotate);   // Natro: field camera turns before the pattern
         phase("Farming", "farm"); nav = fname + " (verifying)";
         if (p.toolHold) in.toolHold(true);
@@ -283,9 +284,10 @@ final class Engine implements Runnable {
 
     /** The character must be standing still on the ground: settle, press the slot key long enough for a frame to
      *  see it, then once more (a second press just re-places it on the same spot, so a missed first press is covered). */
-    private void placeSprinkler() {
+    private void placeSprinkler() { placeSprinkler(true); }
+    private void placeSprinkler(boolean walk) {
         sprinkler = null;
-        walkToSprinklerSpot();
+        if (walk) walkToSprinklerSpot();
         boolean learn = p.sprinklerAnchor && p.keyboard();
         int[] before = null;
         if (learn) { in.hold(MacroService.set(new Moves.Key[]{Moves.Key.S}), Moves.tileMs(3, p.moveSpeed)); sleep(500); before = frames3(); in.hold(MacroService.set(new Moves.Key[]{Moves.Key.W}), Moves.tileMs(3, p.moveSpeed)); }
@@ -592,7 +594,7 @@ final class Engine implements Runnable {
 
     /** A pattern step that would run into a nearby edge is skipped; the correction below then turns us back. */
     private boolean stepBlocked(Moves.Step s) {
-        if (!fieldOn() || s.type != 'W' || s.keys == null) return false;
+        if (!fieldOn() || s.type != 'W' || s.keys == null || corner != null) return false;   // corner mode: the walls keep the pattern in
         int x = stepX(s.keys), y = stepY(s.keys);
         moveDir = dirName(x, y);
         FieldMap.Read r = Monitor.fieldTrack.steady(SystemClock.uptimeMillis());
@@ -614,6 +616,7 @@ final class Engine implements Runnable {
         }
         outsideSince = 0;
         if (r.state == FieldMap.State.INSIDE && r.fieldCells >= 40) { lastInX = r.cx; lastInY = r.cy; lastInYaw = patYaw; haveLastIn = true; }
+        if (corner != null) return;   // corner mode: no edge steering (it pulled patterns out from under the tree); outside = recovery above
         fieldCtl.margin = p.fieldMargin;
         double v = speedNow(1.0);
         FieldMap.Controller.Move m = fieldCtl.update(r, now, v > 0 ? v : 1);
@@ -1167,7 +1170,55 @@ final class Engine implements Runnable {
     private void farm() {
         List<Moves.Step> sk = farmPattern();
         hasteFix = natroPattern ? p.hastePatterns : p.hasteAdjustSkillet;
-        try { farmLoop(sk); } finally { hasteFix = false; }
+        corner = natroPattern && cornerPlanned() ? cornerPlan(sk) : null;
+        try { farmLoop(sk); } finally { hasteFix = false; corner = null; }
+    }
+
+    // ---- corner mode: a Natro pattern lined up in the sprinkler's corner every loop (like Skillet's wall alignment)
+    /** {towards-corner key left/right, towards-corner key forward/back, tiles out from the side wall, tiles out from the end wall} */
+    private Object[] corner;
+    private boolean cornerPlanned() {
+        String l = p.sprinklerLoc;
+        return p.cornerAnchor && p.keyboard() && (l.contains("Upper") || l.contains("Lower")) && (l.contains("Left") || l.contains("Right"));
+    }
+    /** The corner in the pattern's view (after the field camera turns) and how far out the pattern has to start to fit. */
+    private Object[] cornerPlan(List<Moves.Step> sk) {
+        if (Math.floorMod(p.fieldRotate, 2) != 0) { Log.add("corner: field camera turned by 45°, corner mode off"); return null; }
+        double[] e = Patterns.extent(sk);
+        if (e == null) { Log.add("corner: pattern turns by 45°, corner mode off"); return null; }
+        int cx = p.sprinklerLoc.contains("Left") ? -1 : 1, cy = p.sprinklerLoc.contains("Upper") ? 1 : -1;
+        for (int q = Math.floorMod(p.fieldRotate / 2, 4); q > 0; q--) { int t = cx; cx = -cy; cy = t; }   // camera turned right: the field's forward is now on the screen's left
+        // start far enough from each wall that the pattern's furthest reach towards it stays 1 tile short of it
+        double outX = 1 + (cx < 0 ? -e[0] : e[1]), outY = 1 + (cy > 0 ? e[3] : -e[2]);
+        Log.add(String.format(Locale.US, "corner: %s in view %s%s, pattern reach %.1f×%.1f tiles, starting %.1f / %.1f tiles out",
+                p.sprinklerLoc, cy > 0 ? "W" : "S", cx < 0 ? "A" : "D", e[1] - e[0], e[3] - e[2], outX, outY));
+        return new Object[]{cx < 0 ? Moves.Key.A : Moves.Key.D, cy > 0 ? Moves.Key.W : Moves.Key.S, outX, outY};
+    }
+    /** Walk into both walls of the corner (until the world stops moving), then step out to the pattern's start. */
+    private void cornerAlign(boolean first) {
+        Moves.Key kx = (Moves.Key) corner[0], ky = (Moves.Key) corner[1];
+        String was = phase; phase = "Lining up in the corner";
+        long a = wallWalk(ky), b = wallWalk(kx);
+        if (first || a < 0 || b < 0) Log.add("corner: walls " + (a < 0 ? "not reached" : "at " + a + " ms") + " / " + (b < 0 ? "not reached" : "at " + b + " ms"));
+        walkHold(new Moves.Step('H', new Moves.Key[]{Moves.flip(ky)}, 1.0, (int) Moves.tileMs((double) corner[3], p.moveSpeed), null));
+        walkHold(new Moves.Step('H', new Moves.Key[]{Moves.flip(kx)}, 1.0, (int) Moves.tileMs((double) corner[2], p.moveSpeed), null));
+        checkpoint();
+        phase = was; Monitor.fieldTrack.clear();
+        if (first) { placeSprinkler(false); Monitor.fieldTrack.clear(); }   // the sprinkler sits where the pattern starts
+    }
+    /** Hold one key until the character stands still against a wall (ms walked), or -1 if no wall within ~30 tiles.
+     *  Never jumps: a jump at the hedge is what climbed it. */
+    private long wallWalk(Moves.Key k) {
+        long t0 = SystemClock.uptimeMillis(); final long[] still = {0};
+        boolean hit = in.holdUntil(MacroService.set(new Moves.Key[]{k}), Moves.tileMs(30, p.moveSpeed), () -> {
+            long now = SystemClock.uptimeMillis();
+            if (now - t0 < 700 || now - Monitor.motionTime > 1500) return false;
+            if (Monitor.motion >= STILL) { still[0] = 0; return false; }
+            if (still[0] == 0) still[0] = now;
+            return now - still[0] > 450;
+        });
+        checkpoint();
+        return hit ? SystemClock.uptimeMillis() - t0 : -1;
     }
     private void farmLoop(List<Moves.Step> sk) {
         Vision.Result r0 = waitFor(this::bagKnown, 4000);
@@ -1185,6 +1236,7 @@ final class Engine implements Runnable {
         if (Monitor.honey > 0) stats.honey(Monitor.honey);
         lastRise = t0; outsideSince = 0; farmStart = t0; patYaw = 0; haveLastIn = false; Monitor.fieldTrack.clear(); wrongSince = 0; wrongSeen = 0;
         for (int loop = 1; ; loop++) {
+            if (corner != null) cornerAlign(loop == 1);
             for (int i = 0; i < sk.size(); i++) {
                 checkpoint();
                 Moves.Step s = sk.get(i);
@@ -1211,7 +1263,7 @@ final class Engine implements Runnable {
             stats.loops++;
             if (Monitor.honey > 0) stats.honey(Monitor.honey);
             if (stats.loops % 5 == 0) Stats.saveCurrent(in, stats);
-            correctDrift();
+            if (corner == null) correctDrift();   // corner mode re-lines up on the walls every loop instead
             if (loop == 2) {   // 1 bar pixel ≈ 0.24%; a big bag can need ~2 loops to show any rise
                 Vision.Result r = waitFor(this::bagKnown, 3000);
                 if (p.keyboard()) { /* the bag % can fall when capacity grows: the field guard watches this instead */ }

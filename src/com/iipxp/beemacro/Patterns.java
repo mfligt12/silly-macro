@@ -47,6 +47,26 @@ public final class Patterns {
         return out;
     }
 
+    /** How far one run of the pattern reaches from where it starts, in tiles: {left (≤0), right, back (≤0), forward},
+     *  following camera turns in the pattern. null if it turns by 45° (the axes stop lining up with the field).
+     *  Diagonal steps move 1/√2 of their length along each axis (Roblox keeps walk speed the same diagonally). */
+    public static double[] extent(List<Moves.Step> steps) {
+        double x = 0, y = 0, minX = 0, maxX = 0, minY = 0, maxY = 0; int yaw = 0;
+        for (Moves.Step s : steps) {
+            if (s.type == 'R') { yaw += s.count; continue; }
+            if (s.type != 'W' || s.keys == null) continue;
+            if (Math.floorMod(yaw, 2) != 0) return null;
+            double dx = 0, dy = 0;
+            for (Moves.Key k : s.keys) { if (k == Moves.Key.W) dy++; if (k == Moves.Key.S) dy--; if (k == Moves.Key.A) dx--; if (k == Moves.Key.D) dx++; }
+            double n = Math.hypot(dx, dy); if (n == 0) continue;
+            dx = s.tiles * dx / n; dy = s.tiles * dy / n;
+            for (int q = Math.floorMod(yaw / 2, 4); q > 0; q--) { double t = dx; dx = dy; dy = -t; }   // camera turned right: the screen's forward is the field's right
+            x += dx; y += dy;
+            minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+        }
+        return new double[]{minX, maxX, minY, maxY};
+    }
+
     private static double vMoveSpeed = 33.35;   // ponytail: static, steps() is only called from one thread at a time
     private static final Pattern SEND = Pattern.compile("(\\w+)\\s*\"\\s*(up|down)");
     private static final Pattern ASSIGN = Pattern.compile("(\\w+)\\s*:=\\s*(.+)");

@@ -19,7 +19,7 @@ public final class Moves {
         public final double tiles;
         public final int count;
         public final String label;
-        Step(char type, Key[] keys, double tiles, int count, String label) {
+        public Step(char type, Key[] keys, double tiles, int count, String label) {
             this.type = type; this.keys = keys; this.tiles = tiles; this.count = count; this.label = label;
         }
         public long ms(double moveSpeed) {

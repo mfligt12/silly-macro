@@ -115,6 +115,7 @@ public final class Profile {
     // AI decisions (all go through MacroService's one input lock)
     public boolean hasteAdjustSkillet = false; // Skillet walks covered by distance at the live Haste speed
     public boolean hastePatterns = true;
+    public boolean cornerAnchor = true;   // corner sprinkler spot + a Natro pattern: line up in that corner every loop, like Skillet
     public boolean hastyGuard = false, giftedHasty = false;   // permanent speed boosts (Natro settings): only used to weigh Coconut Haste / Bear Morph       // Natro patterns: same, so Haste never stretches the pattern (Natro Walk() does this too)
     public boolean collectTokens = false;     // off until you have labelled tokens and checked the boxes
     public int prioBoost = 3, prioToken = 2, prioLoot = 2, prioMark = 1;   // 0 = never collect

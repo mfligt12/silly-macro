@@ -458,6 +458,7 @@ public class MainActivity extends Activity {
         Button sl = button("Sprinkler spot: " + p.sprinklerLoc, 0, null);
         sl.setOnClickListener(v -> { int i = java.util.Arrays.asList(locs).indexOf(p.sprinklerLoc); p.sprinklerLoc = locs[(i + 1) % locs.length]; App.save(this); sl.setText("Sprinkler spot: " + p.sprinklerLoc); });
         sc.addView(sl);
+        sc.addView(toggle("Corner spots: patterns line up in that corner every loop, like Skillet (Pine Tree: under the tree)", p.cornerAnchor, on -> p.cornerAnchor = on));
     }
 
     // ------------------------------------------------------------------ Navigation
