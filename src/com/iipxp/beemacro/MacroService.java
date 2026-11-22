@@ -492,7 +492,7 @@ public class MacroService extends AccessibilityService {
         close.setOnClickListener(v -> {
             if (Engine.inst != null && !Engine.inst.finished()) { toast("Macro is running — use – to shrink the panel instead, so the emergency stop stays on screen"); return; }
             p.overlayVisible = false; App.save(this); removeOverlay();
-            toast("Panel hidden. Turn it back on in Silly Macro › Settings › Show floating overlay");
+            toast("Panel hidden. To bring it back: Silly Macro › Home › step 5 (Open Bee Swarm), or Settings › Show floating overlay");
         });
         head.addView(exp); head.addView(min); head.addView(close); head.addView(miniStop);
         root.addView(head);

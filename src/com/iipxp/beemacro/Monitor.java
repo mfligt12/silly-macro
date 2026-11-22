@@ -15,7 +15,6 @@ import java.util.Map;
 final class Monitor {
     static volatile Vision.Result last;
     static volatile long lastTime;
-    static volatile int[] debugPx; static volatile int debugW, debugH; static volatile long debugTime;
     /** One raw frame on request (Discord screenshots): set shotWanted, the next frame is copied here. */
     /** Red error banner check on the next raw frame (sprinkler placement). */
     /** Last time the Pollen counter's digits changed (tablet): pollen is coming in. */
@@ -25,8 +24,6 @@ final class Monitor {
     static volatile long msgPine, msgOther, msgOtherSince;
     static volatile boolean bannerWanted; static volatile int bannerRows; static volatile long bannerTime;
     static volatile boolean shotWanted; static volatile int[] shotPx; static volatile int shotW, shotH; static volatile long shotTime;
-    static volatile Vision.Result debugResult;
-    static volatile List<Detector.Det> debugDets = new ArrayList<>();
     static final Detector.Tracker tracker = new Detector.Tracker();
     static volatile Buffs buffs;
     static volatile List<Buffs.Effect> buffBoxes = new ArrayList<>();
@@ -207,7 +204,6 @@ final class Monitor {
                     }
                     last = r; lastTime = SystemClock.uptimeMillis(); frames++;
                     lastFrameMs = lastTime - t0;
-                    if (r.w > r.h && lastTime - debugTime > 3000) { debugPx = fpx0.clone(); debugW = fw0; debugH = fh0; debugResult = r; debugDets = dets; debugTime = lastTime; }
                 }
                 long now = SystemClock.uptimeMillis();
                 if (now - winStart >= 2000) {

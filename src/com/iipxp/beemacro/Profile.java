@@ -49,7 +49,11 @@ public final class Profile {
     public double moveScale = 1.0;        // multiplies walk durations if drift is observed
 
     // Your private server (used by the "Open Bee Swarm" button)
-    public String serverLink = "https://www.roblox.com/share?code=516f383a1f44dd44a7c85242f14be297&type=Server";
+    /** Your private server link (empty = Bee Swarm's normal game page). Used by "Open Bee Swarm" and overnight rejoins. */
+    public String serverLink = "";
+    /** Bee Swarm Simulator's public game page: where "Open Bee Swarm" goes without a private server link. */
+    public static final String BEE_SWARM = "https://www.roblox.com/games/1537690962/Bee-Swarm-Simulator";
+    public String joinLink() { return serverLink == null || serverLink.trim().isEmpty() ? BEE_SWARM : serverLink.trim(); }
 
     // Which layout these input coordinates were set for ("s23" / "tablet"); set once on first start
     public String device = "";
@@ -160,6 +164,8 @@ public final class Profile {
                 else if (t == String.class) fl.set(p, v);
             } catch (Exception ignored) { }
         }
+        // the first builds shipped the developer's own private server as the default link: never send people there
+        if (p.serverLink != null && p.serverLink.contains("516f383a1f44dd44a7c85242f14be297")) { p.serverLink = ""; p.save(dir); }
         return p;
     }
 

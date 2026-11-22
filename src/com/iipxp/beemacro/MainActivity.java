@@ -327,7 +327,7 @@ public class MainActivity extends Activity {
         c.addView(button("4 · Pick your hive slot (Hive tab)", PURPLE, v -> show("hive", true)));
         c.addView(button("5 · Open Bee Swarm (your private server)", BLUE, v -> {
             showPanel();   // the panel's ✕ hid it for good before (Discord: "panel isn't popping up")
-            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(p.serverLink)).setPackage("com.roblox.client")); }
+            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(p.joinLink())).setPackage("com.roblox.client")); }
             catch (Exception e) { toast("Roblox not installed"); }
         }));
         c.addView(tv("6 · In the game, hold your phone sideways and press ▶ Start on the floating panel. The app reads your screen by itself.", 12, DIM));
@@ -361,6 +361,7 @@ public class MainActivity extends Activity {
 
     /** Start from the app: bring Roblox to the front (its own launcher entry, which keeps the game running), then run
      *  the same preflight + engine the floating panel's Start uses. */
+    String versionName() { try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return "?"; } }
     /** Bring the floating panel back (its ✕ turns it off; new players never found Settings → Show floating overlay). */
     void showPanel() {
         if (p.overlayVisible && MacroService.inst != null && MacroService.inst.overlayShown()) return;
@@ -610,13 +611,13 @@ public class MainActivity extends Activity {
             }));
         }
         LinearLayout ps = card("Private server");
-        ps.addView(tv("Used by \"Open Bee Swarm\" and by the overnight rejoin. Paste your server's share link from Roblox "
+        ps.addView(tv("Optional. Without a link, \"Open Bee Swarm\" opens the normal game (a public server works too). With one, it and the overnight rejoin go to your private server. Paste its share link from Roblox "
                 + "(Server → Private Servers → … → Copy Link), e.g. https://www.roblox.com/share?code=…&type=Server", 12, DIM));
         android.widget.EditText link = new android.widget.EditText(this);
         link.setHint("https://www.roblox.com/share?code=…"); link.setTextColor(TXT); link.setHintTextColor(Ui.FAINT); link.setSingleLine(true);
         link.setText(p.serverLink);
         ps.addView(link);
-        TextView psState = tv(KeyServer.linkOk(p.serverLink) ? "Server link saved ✔" : "No valid server link", 12, KeyServer.linkOk(p.serverLink) ? Ui.GREEN : Ui.GOLD);
+        TextView psState = tv(KeyServer.linkOk(p.serverLink) ? "Server link saved ✔" : "No private server link: Open Bee Swarm uses a public server", 12, KeyServer.linkOk(p.serverLink) ? Ui.GREEN : Ui.GOLD);
         LinearLayout pr = row();
         pr.addView(button("Save link", PURPLE, v -> {
             String u = link.getText().toString().trim().replaceFirst("^http://", "https://").replaceFirst("^https://roblox\\.com/", "https://www.roblox.com/");
@@ -626,7 +627,7 @@ public class MainActivity extends Activity {
             Log.add("settings: private server link changed");
         }), new LinearLayout.LayoutParams(0, dp(48), 1));
         pr.addView(button("Open it", BLUE, v -> {
-            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(p.serverLink)).setPackage("com.roblox.client")); }
+            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(p.joinLink())).setPackage("com.roblox.client")); }
             catch (Exception e) { toast("Roblox not installed"); }
         }), new LinearLayout.LayoutParams(0, dp(48), 1));
         ps.addView(pr);
@@ -674,6 +675,11 @@ public class MainActivity extends Activity {
         dc.addView(ping);
         LinearLayout n = card("Overnight");
         n.addView(toggle("Overnight mode: auto rejoin, auto hive claim, never pause", p.overnight, on -> p.overnight = on));
+        n.addView(tv("For long runs, let Silly Macro run without battery limits (Samsung: Battery → Unrestricted), so Android doesn't slow it down in the background.", 12, DIM));
+        n.addView(button("Battery settings", 0, v -> {
+            try { startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))); }
+            catch (Exception e) { startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)); }
+        }));
         LinearLayout k = card("Key sender (keyboard + mouse)");
         if (!shizukuInstalled()) k.addView(button("Install Shizuku (for the key sender without a PC)", 0, v -> getShizuku()));
         k.addView(button("Start key sender on this device (Shizuku, no PC)", PURPLE, v -> {
@@ -688,6 +694,11 @@ public class MainActivity extends Activity {
         dbg.addView(toggle("Debug mode (show the log below)", p.debug, on -> { p.debug = on; log.setVisibility(on ? View.VISIBLE : View.GONE); }));
         log = tv("", 11, DIM); log.setTypeface(Typeface.MONOSPACE); log.setVisibility(p.debug ? View.VISIBLE : View.GONE);
         dbg.addView(log);
+        dbg.addView(button("Share log (paste it in #bug-reports)", 0, v -> {   // remote problems can't be fixed without it
+            String text = "Silly Macro " + versionName() + "\n" + deviceSummary() + "\nHUD: " + Monitor.calState + "\n\n" + Log.dump(300);
+            text = text.replaceAll("[\\w.+-]+@[\\w-]+\\.[\\w.]+", "[email hidden]");   // never share the account email
+            startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Share Silly Macro log"));
+        }));
         dbg.addView(tv(Profile.NAME + " · " + Profile.PRESET, 11, Ui.FAINT));
     }
 
@@ -715,7 +726,12 @@ public class MainActivity extends Activity {
         line(s, input, "Accessibility service (floating panel and menu taps)");
         line(s, cap, "Screen capture (MediaProjection)");
         line(s, p.hiveConfirmed, "Hive slot " + p.hiveSlot + (p.hiveConfirmed ? " confirmed" : " — confirm it once (Hive tab)"));
-        line(s, input && MacroService.inst.overlayShown(), "Floating overlay with emergency stop");
+        boolean panel = input && MacroService.inst.overlayShown();
+        line(s, panel, panel ? "Floating panel on screen (Start, Stop, emergency stop)"
+                : "Floating panel hidden: tap step 5 below, or Settings → Show floating overlay");
+        // Developer options → "Smallest width" turned down (Discord: set to 220) makes Roblox draw a different HUD
+        int sw = getResources().getConfiguration().smallestScreenWidthDp;
+        if (sw > 0 && sw < 300) line(s, false, "Android's \"Smallest width\" is " + sw + " dp (Developer options). Set it back to the default: Roblox draws its HUD differently and the macro can't read it");
         boolean game = v != null && v.screen == Vision.Screen.GAME && v.screenConf >= p.minConfidence;
         line(s, game, "Vision: " + (v == null ? "no frames" : game ? "Bee Swarm HUD recognized" : "waiting for Bee Swarm (now: " + v.screen + ")"));
         checks.setText(s.toString().trim());

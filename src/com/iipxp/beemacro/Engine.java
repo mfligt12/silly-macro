@@ -204,7 +204,7 @@ final class Engine implements Runnable {
             hook("problem", "🔌 Rejoining (#" + attempt + ")", why, Webhook.RED, true);
             phase = "Rejoining"; decide("Rejoining", "The game is gone or stuck; opening your server again.", why, "claim the hive and carry on", 0.9);
             in.emergencyRelease(); in.arm();
-            if (!Keys.connect(in) || !Keys.rejoin(p.serverLink)) Log.add("rejoin: key sender refused (" + Keys.status + ")");
+            if (!Keys.connect(in) || !Keys.rejoin(p.joinLink())) Log.add("rejoin: key sender refused (" + Keys.status + ")");
             stats.rejoins++;
             long end = SystemClock.uptimeMillis() + 180_000; int good = 0;
             while (SystemClock.uptimeMillis() < end && good < 5) { sleep(1000); Vision.Result r = Monitor.last; good = r != null && sure(r) ? good + 1 : 0; }
