@@ -1184,6 +1184,9 @@ final class Engine implements Runnable {
         if (r == null) { pause("Can't read backpack/hive prompt at hive"); checkpoint(); throw new Recover("convert: unreadable"); }
         // the bag bar rounds a big bag down to 0%; the game's own "Make Honey" prompt means there is pollen to convert
         if (r.pollen < 1 && r.prompt != Vision.Prompt.TAP_RED && r.prompt != Vision.Prompt.TAP_BLUE) { Log.add("convert: backpack empty, nothing to convert"); return; }
+        // "To Make Honey, Collect Pollen From Flower Fields" = the game says the bag is empty (field conversions -
+        // Token Link, Diamond Drain, the balloon - often leave it at 0%): we're on our pad and there's nothing to do
+        if (r.prompt == Vision.Prompt.BANNER_BLUE) { Log.add("convert: the game says the bag is empty (pollen was converted in the field)"); return; }
         double startPct = r.pollen;
         resetBagWatch();
         if (r.prompt != Vision.Prompt.TAP_BLUE && r.prompt != Vision.Prompt.TAP_RED) {   // slid off the pad: find it again first
