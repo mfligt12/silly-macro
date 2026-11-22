@@ -61,13 +61,10 @@ final class Engine implements Runnable {
         }
         if (r.pollenConf < p.minConfidence) return "Backpack bar not readable.";
         s.arm();
-        if (p.inputMode.isEmpty() && !p.device.equals("tablet"))   // Auto on a phone: keyboard + mouse whenever the key sender works (starts it via Shizuku if set up)
-            Profile.keySender = Keys.connect(s) && Keys.ping() && !String.valueOf(Keys.emulatorState()).startsWith("none");
-        if (!p.keyboard() && p.toolHold) Log.add("tool: touch input can't swing the tool; start the key sender (Shizuku) for keyboard + mouse");
         if (p.keyboard()) {
             if (!Keys.connect(s) || !Keys.ping()) return "Keyboard mode: the key sender isn't running on this device (" + Keys.status + "). Start it with Shizuku in Silly Macro (or start_keys from a PC) and try again.";
             String emu = Keys.emulatorState();
-            if (emu != null && emu.startsWith("none")) return "Keyboard mode: the key sender runs, but this device has no emulated keyboard/mouse (" + emu + "). Roblox ignores keys without one: plug in a USB/Bluetooth keyboard, or use Touch input mode.";
+            if (emu != null && emu.startsWith("none")) return "Keyboard mode: the key sender runs, but this device has no emulated keyboard/mouse (" + emu + "). Roblox ignores keys without one: plug in a USB/Bluetooth keyboard and mouse.";
         } else if (!s.tap(p.idleX, p.idleY)) return "Input test failed: accessibility gestures were not accepted.";
         return null;
     }
@@ -313,10 +310,10 @@ final class Engine implements Runnable {
     private boolean pressSprinkler(Moves.Key[] inward) {
         for (int attempt = 1; attempt <= 4; attempt++) {
             sleep(600);
-            boolean a = pressSlot(p.sprinklerSlot); sleep(800);
+            boolean a = in.key(android.view.KeyEvent.KEYCODE_1 + p.sprinklerSlot - 1, 150); sleep(800);
             int rows = redBanner();
             if (rows < 4) {
-                boolean b = pressSlot(p.sprinklerSlot); sleep(400);
+                boolean b = in.key(android.view.KeyEvent.KEYCODE_1 + p.sprinklerSlot - 1, 150); sleep(400);
                 Log.add("sprinkler: placed with key " + p.sprinklerSlot + (attempt > 1 ? " on try " + attempt : "") + " (" + (a ? "sent" : "NOT sent") + ", " + (b ? "sent" : "NOT sent") + ")");
                 sprinklerPlaced = true;
                 return true;
@@ -330,12 +327,6 @@ final class Engine implements Runnable {
         }
         Log.add("sprinkler: still refused after 4 tries, farming without it");
         return false;
-    }
-    /** Hotbar slot: its number key with keyboard + mouse, else a tap on the slot (touch input has no keys). */
-    private boolean pressSlot(int slot) {
-        if (in.keyboard()) return in.key(android.view.KeyEvent.KEYCODE_1 + slot - 1, 150);
-        android.graphics.Point z = in.screen(); float[] f = Remap.hotbar(slot, Math.max(z.x, z.y), Math.min(z.x, z.y));
-        return in.tap(f[0], f[1]);
     }
     /** Rows of a red error banner on the next frame (0 if none or no frame in 1.5 s). */
     private int redBanner() {
