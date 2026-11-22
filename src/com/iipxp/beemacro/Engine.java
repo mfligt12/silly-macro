@@ -152,14 +152,23 @@ final class Engine implements Runnable {
         String acc = Account.check(in, false);   // every few minutes: the admin may have disabled this account
         if (acc != null) { stop(acc); in.toast(acc); throw new Stopped(); }
         if (Monitor.honey > 0) stats.honey(Monitor.honey);
-        if (SystemClock.uptimeMillis() - lastHourly >= 3_600_000L) {   // hourly report, like Natro's
+        timedReport();
+        stats.fieldExits = fieldOuts;
+        Stats.saveCurrent(in, stats);
+        afterTripRest();
+    }
+    /** The timed Discord report (Settings → Discord → Send it every N min), like Natro's hourly one. Checked after
+     *  every trip and every farming step, so a short interval isn't held back by a long trip. */
+    private void timedReport() {
+        if (SystemClock.uptimeMillis() - lastHourly >= Math.max(10, p.whEveryMins) * 60_000L) {
             lastHourly = SystemClock.uptimeMillis();
-            hook("hourly", "⏱ Hourly report", "Session " + Stats.fmt(stats.elapsed()) + " · conversions " + stats.conversions
+            if (Monitor.honey > 0) stats.honey(Monitor.honey);
+            hook("hourly", "⏱ " + (p.whEveryMins == 60 ? "Hourly" : p.whEveryMins + "-minute") + " report", "Session " + Stats.fmt(stats.elapsed()) + " · conversions " + stats.conversions
                     + (stats.honeyStart > 0 && stats.honeyNow > stats.honeyStart ? "\nHoney made: +" + Stats.big(stats.honeyNow - stats.honeyStart) : "")
                     + (stats.honeyRate().isEmpty() ? "" : "\nRate: " + stats.honeyRate().replace("🍯 ", "")) + (Monitor.honey > 0 ? "\nHoney: " + Stats.big(Monitor.honey) : ""), Webhook.CYAN, true);
         }
-        stats.fieldExits = fieldOuts;
-        Stats.saveCurrent(in, stats);
+    }
+    private void afterTripRest() {
         if (!night()) return;
         android.content.Intent b = in.registerReceiver(null, new android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED));
         if (b == null) return;
@@ -1183,6 +1192,7 @@ final class Engine implements Runnable {
                 decide("Farming", "Skillet step " + (i + 1) + "/" + sk.size(), 1);
                 if (stepBlocked(s)) { fieldControl(); continue; }
                 exec(s);
+                timedReport();
                 Vision.Result r = watchScreen();
                 guardBag(r);
                 rate(r);

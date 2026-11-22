@@ -604,7 +604,7 @@ public class MainActivity extends Activity {
         ps.addView(psState);
         LinearLayout dc = card("Discord webhook");
         dc.addView(tv("Reports with screenshots to your Discord channel, like Natro: started, backpack full, converting, honey made, balloon, "
-                + "Mondo, resets / rejoins, an hourly report and the session summary. In Discord: channel → Edit → Integrations → Webhooks → New → Copy URL. "
+                + "Mondo, resets / rejoins, a timed report (every 10 min to 2 h) and the session summary. In Discord: channel → Edit → Integrations → Webhooks → New → Copy URL. "
                 + "Screenshots go only to that webhook.", 12, DIM));
         android.widget.EditText url = new android.widget.EditText(this);
         url.setHint("https://discord.com/api/webhooks/…"); url.setTextColor(TXT); url.setHintTextColor(Ui.FAINT); url.setSingleLine(true);
@@ -632,7 +632,12 @@ public class MainActivity extends Activity {
         dc.addView(toggle("Converting & honey made", p.whConvert, on -> p.whConvert = on));
         dc.addView(toggle("Field: backpack full, Mondo", p.whField, on -> p.whField = on));
         dc.addView(toggle("Problems: pauses, resets, rejoins", p.whProblems, on -> p.whProblems = on));
-        dc.addView(toggle("Hourly report", p.whHourly, on -> p.whHourly = on));
+        dc.addView(toggle("Timed report (honey made, rate, screenshot)", p.whHourly, on -> p.whHourly = on));
+        dc.addView(stepper("Send it every", () -> p.whEveryMins + " min", x -> {
+            int[] ch = {10, 20, 30, 60, 120}; int i = 0;
+            while (i < ch.length - 1 && ch[i] < p.whEveryMins) i++;
+            p.whEveryMins = ch[Math.max(0, Math.min(ch.length - 1, i + x))];
+        }));
         android.widget.EditText ping = new android.widget.EditText(this);
         ping.setHint("Your Discord user ID to ping on problems (optional)"); ping.setTextColor(TXT); ping.setHintTextColor(Ui.FAINT); ping.setSingleLine(true);
         ping.setInputType(android.text.InputType.TYPE_CLASS_NUMBER); ping.setText(p.discordPingId);

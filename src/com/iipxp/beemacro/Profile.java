@@ -74,6 +74,7 @@ public final class Profile {
     // Discord webhook reports (like Natro): your webhook URL, which events, screenshots, and who to ping on problems
     public String webhookUrl = "", discordPingId = "";
     public boolean whScreens = true, whConvert = true, whField = true, whProblems = true, whHourly = true;
+    public int whEveryMins = 60;   // timed report interval: 10, 20, 30, 60 or 120 min
     // Other screens: Roblox UI scale vs the Tab S9 FE, in %; 0 = measure it from the honey counter (auto)
     public int uiScale = 0;
     public boolean shizukuOffered = false;
