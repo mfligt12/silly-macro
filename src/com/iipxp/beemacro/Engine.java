@@ -265,7 +265,9 @@ final class Engine implements Runnable {
         in.tilt(FIELD_TILT);
         sleep(800);
         // blue/white fields only: the flower check knows Pine Tree-like flowers
+        arrivalOk = false;
         if (p.navGuard && Routes.blueField(p.field) && !seekPine(10_000, "arrival")) throw new Recover("no " + fname + " flowers in sight after the walk");
+        arrivalOk = true;
         // The walk ends near the middle of the field: place the sprinkler here (Natro's walk to a corner climbs the hedge).
         // Corner mode places it later, at the pattern's start in the corner.
         if (!cornerWanted()) placeSprinkler();
@@ -322,7 +324,7 @@ final class Engine implements Runnable {
         while (Monitor.bannerTime == since && SystemClock.uptimeMillis() < end) SystemClock.sleep(40);
         return Monitor.bannerTime == since ? 0 : Monitor.bannerRows;
     }
-    private boolean sprinklerPlaced;
+    private boolean sprinklerPlaced, arrivalOk;
     private void placeSprinkler(boolean walk, Moves.Key[] inward) {
         sprinkler = null; sprinklerPlaced = false;
         if (walk) walkToSprinklerSpot();
@@ -337,6 +339,10 @@ final class Engine implements Runnable {
         if (before != null && after != null && ro != null && before.length == after.length) {
             int w = ro.w, h = ro.h, py = Math.round(p.playerY * h), half = (int) (0.54 * h);   // ±0.54 x height around the centre = the tablet's box, any shape
             sprinkler = SprinklerFinder.learn(before, after, w, h, Math.max(0, w / 2 - half), (int) (0.18 * h), Math.min(w, w / 2 + half), Math.max((int) (0.3 * h), py - 20));
+            if (sprinkler != null && (sprinkler.learnedW > 0.3 * h || sprinkler.learnedH > 0.3 * h)) {   // live: 445×423 px under the tree = leaves that moved, not a sprinkler
+                Log.add("sprinkler: the change ahead was " + sprinkler.learnedW + "×" + sprinkler.learnedH + " px, far too big for a sprinkler (leaves moving?) - not used");
+                sprinkler = null;
+            }
             saveGuardFrame("sprinkler");
             Log.add(sprinkler == null ? "sprinkler: couldn't learn its look (no single new object ahead) - no sprinkler anchor this trip"
                     : "sprinkler: learned (" + sprinkler.learnedW + "×" + sprinkler.learnedH + " px at " + sprinkler.learnedX + "," + sprinkler.learnedY + ")");
@@ -1395,7 +1401,11 @@ final class Engine implements Runnable {
         if (p.navGuard && p.keyboard() && seen[0] < 3 && seen[1] <= seen[0] && seekPine(8000, "field check")) seen = fieldFrames();
         int pine = seen[0], other = seen[1];
         Log.add("field check: pine=" + pine + " other=" + other + " of 6 frames");
-        if (pine < 3 || other > pine) throw new Recover(other > pine ? "landed in another field (red flowers), not Pine Tree" : "not standing in Pine Tree Forest");
+        // Under Pine Tree's leaves no flowers show at all (pine=0 other=0). The field was confirmed on arrival and Bee
+        // Swarm accepted the sprinkler (it refuses outside a field), so that is trusted; another field's flowers are not.
+        boolean hidden = pine < 3 && other == 0 && arrivalOk && sprinklerPlaced;
+        if (hidden) Log.add("field check: flowers hidden here (under the leaves); trusting the arrival check and the placed sprinkler");
+        else if (pine < 3 || other > pine) throw new Recover(other > pine ? "landed in another field (red flowers), not Pine Tree" : "not standing in Pine Tree Forest");
         nav = Routes.name(p.field) + (Routes.blueField(p.field) ? " (flowers confirmed " + pine + "/6)" : "");
         double startPct = r0.pollen;
         long t0 = SystemClock.uptimeMillis();
