@@ -1,0 +1,19 @@
+// Silly Macro accounts. Paste into Firebase console -> Firestore Database -> Rules, put your admin UID below, Publish.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function isAdmin() { return request.auth != null && request.auth.uid == "qmfJrXPEWgPzHIxZ5AL6uEEz5b33"; }
+    function isOwner(uid) { return request.auth != null && request.auth.uid == uid; }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow list, delete: if isAdmin();
+      // a user creates their own record, only as not disabled
+      allow create: if isAdmin() || (isOwner(uid) && request.resource.data.disabled == false
+                      && !request.resource.data.keys().hasAny(['reason', 'changedAt', 'changedBy']));
+      // a user may refresh their own email / lastSeen / device / version, never the admin fields
+      allow update: if isAdmin() || (isOwner(uid)
+                      && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['disabled', 'reason', 'changedAt', 'changedBy']));
+    }
+  }
+}

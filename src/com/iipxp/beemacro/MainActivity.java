@@ -80,6 +80,11 @@ public class MainActivity extends Activity {
         if (checkSelfPermission("android.permission.POST_NOTIFICATIONS") != 0) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
         getWindow().setStatusBarColor(Ui.BG1); getWindow().setNavigationBarColor(BG);
         wide = getResources().getConfiguration().screenWidthDp >= 640;
+        if (Account.configured(this) && !Account.signedIn(this)) { buildLogin(); return; }
+        if (Account.configured(this)) new Thread(() -> {   // re-check on every open: a disabled account goes back to the login page
+            String why = Account.check(this, true);
+            if (why != null && !Account.signedIn(this)) runOnUiThread(this::recreate);
+        }, "account").start();
 
         FrameLayout frame = new FrameLayout(this);
         frame.setBackground(new Ui.HoneyBackground(this));
@@ -563,6 +568,14 @@ public class MainActivity extends Activity {
             public void onStopTrackingTouch(SeekBar s) { App.save(MainActivity.this); }
         });
         o.addView(sb);
+        if (Account.configured(this)) {
+            LinearLayout ac = card("Account");
+            ac.addView(tv("Signed in as " + Account.email(this), 13, TXT));
+            ac.addView(button("Sign out", 0, v -> {
+                Engine e = Engine.inst; if (e != null && !e.finished()) { toast("Stop the macro first"); return; }
+                Account.signOut(this); recreate();
+            }));
+        }
         LinearLayout ps = card("Private server");
         ps.addView(tv("Used by \"Open Bee Swarm\" and by the overnight rejoin. Paste your server's share link from Roblox "
                 + "(Server → Private Servers → … → Copy Link), e.g. https://www.roblox.com/share?code=…&type=Server", 12, DIM));
@@ -643,7 +656,7 @@ public class MainActivity extends Activity {
     final Runnable tick = new Runnable() { @Override public void run() { refresh(); h.postDelayed(this, 1000); } };
 
     @Override protected void onDestroy() { h.removeCallbacks(tick); super.onDestroy(); }
-    @Override protected void onResume() { super.onResume(); drawVision(); drawReview(); drawCatalog(""); }
+    @Override protected void onResume() { super.onResume(); if (content == null) return; drawVision(); drawReview(); drawCatalog(""); }
 
     @Override protected void onActivityResult(int req, int code, Intent data) {
         if (req == 7 && code == RESULT_OK && data != null)
@@ -959,6 +972,62 @@ public class MainActivity extends Activity {
         s.setOnCheckedChangeListener((CompoundButton b, boolean v) -> { cb.set(v); App.save(this); });
         return s;
     }
+    // ------------------------------------------------------------------ login (Account)
+    void buildLogin() {
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackground(new Ui.HoneyBackground(this)); frame.setFitsSystemWindows(true);
+        ScrollView sv = new ScrollView(this); sv.setFillViewport(true);
+        LinearLayout col = new LinearLayout(this); col.setOrientation(LinearLayout.VERTICAL); col.setGravity(Gravity.CENTER_HORIZONTAL);
+        col.setPadding(dp(20), dp(40), dp(20), dp(40));
+        sv.addView(col);
+        frame.addView(sv, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(frame);
+        root = col;
+        ImageView logo = new ImageView(this); logo.setImageResource(R.drawable.ic_launcher);
+        col.addView(logo, new LinearLayout.LayoutParams(dp(84), dp(84)));
+        TextView title = tv("Silly Macro", 26, TXT); title.setTypeface(Typeface.DEFAULT_BOLD); title.setGravity(Gravity.CENTER); col.addView(title);
+        LinearLayout c = card(Account.disabled(this) ? "Account disabled" : "Sign in");
+        c.setLayoutParams(new LinearLayout.LayoutParams(wide ? dp(440) : -1, -2) {{ topMargin = dp(16); }});
+        if (Account.disabled(this)) {
+            String r = Account.savedReason(this);
+            c.addView(tv("This account was disabled by the Silly Macro admin" + (r.isEmpty() ? "." : ":\n" + r)
+                    + "\n\nIf you think this is a mistake, contact the admin.", 13, Ui.GOLD));
+        }
+        c.addView(tv("An account is needed to use Silly Macro. It stores your email, when you last used the app, your device model and the app version. "
+                + "Your password is only sent to the account server (Google Firebase), never stored on this device.", 12, DIM));
+        android.widget.EditText email = new android.widget.EditText(this);
+        email.setHint("Email"); email.setTextColor(TXT); email.setHintTextColor(Ui.FAINT); email.setSingleLine(true);
+        email.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        email.setText(Account.email(this));
+        email.setAutofillHints(View.AUTOFILL_HINT_EMAIL_ADDRESS);
+        c.addView(email);
+        android.widget.EditText pw = new android.widget.EditText(this);
+        pw.setHint("Password (6+ characters)"); pw.setTextColor(TXT); pw.setHintTextColor(Ui.FAINT); pw.setSingleLine(true);
+        pw.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        pw.setAutofillHints(View.AUTOFILL_HINT_PASSWORD);
+        c.addView(pw);
+        TextView msg = tv("", 13, Ui.GOLD); c.addView(msg);
+        java.util.function.Consumer<Boolean> go = create -> {
+            String e = email.getText().toString().trim(), w = pw.getText().toString();
+            if (e.isEmpty() || w.isEmpty()) { msg.setText("Enter your email and password."); return; }
+            msg.setTextColor(DIM); msg.setText(create ? "Creating account…" : "Signing in…");
+            new Thread(() -> {
+                String why = Account.signIn(this, e, w, create);
+                runOnUiThread(() -> { if (why == null) recreate(); else { msg.setTextColor(Ui.GOLD); msg.setText(why); } });
+            }, "login").start();
+        };
+        c.addView(button("Sign in", PURPLE, v -> go.accept(false)));
+        c.addView(button("Create account", BLUE, v -> go.accept(true)));
+        c.addView(button("Forgot password", 0, v -> {
+            String e = email.getText().toString().trim();
+            if (e.isEmpty()) { msg.setText("Enter your email first."); return; }
+            new Thread(() -> {
+                String r; try { Account.fb(this).sendReset(e); r = "If that email has an account, a reset link is on its way."; } catch (Fb.Error x) { r = Fb.explain(x.code); }
+                String rr = r; runOnUiThread(() -> { msg.setTextColor(DIM); msg.setText(rr); });
+            }, "reset").start();
+        }));
+    }
+
     LinearLayout card(String title) {
         LinearLayout c = new LinearLayout(this); c.setOrientation(LinearLayout.VERTICAL);
         c.setPadding(dp(16), dp(14), dp(16), dp(14));

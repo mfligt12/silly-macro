@@ -1,0 +1,41 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Silly Macro: a goofy bee (mismatched googly eyes, tongue out, one droopy antenna) on a midnight honeycomb tile -->
+    <path android:pathData="M22,4h64a18,18 0,0 1,18 18v64a18,18 0,0 1,-18 18h-64a18,18 0,0 1,-18 -18v-64a18,18 0,0 1,18 -18z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="10" android:startY="4" android:endX="98" android:endY="104"
+                android:startColor="#FF2B1466" android:endColor="#FF090616"/>
+        </aapt:attr>
+    </path>
+    <!-- faint honeycomb -->
+    <path android:strokeColor="#338B5CF6" android:strokeWidth="1.2"
+        android:pathData="M22,14l9,5v10l-9,5l-9,-5v-10zM86,70l9,5v10l-9,5l-9,-5v-10zM80,12l7,4v8l-7,4l-7,-4v-8zM20,78l7,4v8l-7,4l-7,-4v-8z"/>
+    <!-- antennae: one up, one flopped over -->
+    <path android:strokeColor="#FF1B0F33" android:strokeWidth="3" android:strokeLineCap="round" android:pathData="M45,34c-3,-8 -6,-12 -10,-14"/>
+    <path android:fillColor="#FF1B0F33" android:pathData="M35,20m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0"/>
+    <path android:strokeColor="#FF1B0F33" android:strokeWidth="3" android:strokeLineCap="round" android:pathData="M61,33c4,-9 11,-10 14,-5"/>
+    <path android:fillColor="#FF1B0F33" android:pathData="M76,31m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0"/>
+    <!-- wings -->
+    <path android:fillColor="#9922D3EE" android:strokeColor="#FFB8F3FF" android:strokeWidth="1.2"
+        android:pathData="M37,46c-12,-6 -22,-2 -21,6c1,7 12,8 23,2z"/>
+    <path android:fillColor="#9922D3EE" android:strokeColor="#FFB8F3FF" android:strokeWidth="1.2"
+        android:pathData="M71,46c12,-6 22,-2 21,6c-1,7 -12,8 -23,2z"/>
+    <!-- body with stripes -->
+    <group>
+        <clip-path android:pathData="M54,33c14,0 24,11 24,25s-10,26 -24,26s-24,-12 -24,-26s10,-25 24,-25z"/>
+        <path android:fillColor="#FFFFC233" android:pathData="M54,33c14,0 24,11 24,25s-10,26 -24,26s-24,-12 -24,-26s10,-25 24,-25z"/>
+        <path android:fillColor="#FFF59E0B" android:pathData="M30,64h48v20h-48z"/>
+        <path android:fillColor="#FF2A1650" android:pathData="M28,66c8,3 40,3 52,0v6c-12,3 -44,3 -52,0zM30,77c8,3 38,3 48,0v8h-48z"/>
+    </group>
+    <!-- googly eyes: different sizes, pupils looking different ways -->
+    <path android:fillColor="#FFFFFFFF" android:strokeColor="#FF1B0F33" android:strokeWidth="1.5" android:pathData="M45,51m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0"/>
+    <path android:fillColor="#FFFFFFFF" android:strokeColor="#FF1B0F33" android:strokeWidth="1.5" android:pathData="M64,49m-10,0a10,10 0,1 1,20 0a10,10 0,1 1,-20 0"/>
+    <path android:fillColor="#FF1B0F33" android:pathData="M42,54m-3.6,0a3.6,3.6 0,1 1,7.2 0a3.6,3.6 0,1 1,-7.2 0"/>
+    <path android:fillColor="#FF1B0F33" android:pathData="M68,45m-4.4,0a4.4,4.4 0,1 1,8.8 0a4.4,4.4 0,1 1,-8.8 0"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M69.5,43.5m-1.4,0a1.4,1.4 0,1 1,2.8 0a1.4,1.4 0,1 1,-2.8 0"/>
+    <!-- grin with tongue -->
+    <path android:fillColor="#FF1B0F33" android:pathData="M46,60c4,5 13,5 17,-1c-5,2 -12,2 -17,1z"/>
+    <path android:fillColor="#FFFF5C93" android:pathData="M55,62c3,0 5,2 4,5c-1,3 -5,3 -6,0c-1,-2 0,-5 2,-5z"/>
+    <!-- sparkle -->
+    <path android:fillColor="#FF22D3EE" android:pathData="M88,40l1.8,4.2l4.2,1.8l-4.2,1.8l-1.8,4.2l-1.8,-4.2l-4.2,-1.8l4.2,-1.8z"/>
+</vector>

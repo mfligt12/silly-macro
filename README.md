@@ -14,6 +14,17 @@ All the source is here, so you can read exactly what it does and build the APK y
 
 Using macros may be against Roblox's or the game's rules. Use it at your own risk.
 
+## Accounts (official builds)
+
+Official builds ask you to sign in, using Firebase Authentication. The admin can disable accounts that are used for anything bad.
+
+- **What's stored:** your email, when you last used the app, your device model and the app version.
+- **What's never stored:** your password. It goes only to Firebase.
+
+A build made from this source without `assets/firebase.properties` has no login.
+
+The admin app is in `admin/`, and the Firestore access rules are in `firestore.rules`.
+
 ## Permissions (AndroidManifest.xml)
 
 | Permission | Why |

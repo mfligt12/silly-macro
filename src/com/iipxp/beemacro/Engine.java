@@ -30,6 +30,8 @@ final class Engine implements Runnable {
 
     /** Returns null when started, otherwise what needs attention. */
     static synchronized String start(MacroService s) {
+        String acc = Account.check(s, true);   // signed in and not disabled by the admin
+        if (acc != null) { Log.add("preflight: " + acc); return acc; }
         String why = preflight(s);
         Log.add(why == null ? "preflight: all checks passed" : "preflight: " + why);
         if (why != null) return why;
@@ -147,6 +149,8 @@ final class Engine implements Runnable {
     private void hook(String kind, String title, String text, int color, boolean shot) { Webhook.send(in, kind, title, text, color, shot); }
 
     private void afterTrip() {
+        String acc = Account.check(in, false);   // every few minutes: the admin may have disabled this account
+        if (acc != null) { stop(acc); in.toast(acc); throw new Stopped(); }
         if (Monitor.honey > 0) stats.honey(Monitor.honey);
         if (SystemClock.uptimeMillis() - lastHourly >= 3_600_000L) {   // hourly report, like Natro's
             lastHourly = SystemClock.uptimeMillis();
