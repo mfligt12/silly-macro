@@ -450,9 +450,12 @@ final class Engine implements Runnable {
         // Slid past the pad before the key came up (screen frames arrive ~8 a second, so the stop is late; with Haste
         // later still). Natro steps back 1.5 tiles at a time, which here jumped over the pad both ways until it gave
         // up. Sweep back in short Haste-corrected steps instead, checking a fresh frame after each, then the other way.
+        // Live: it had stopped SHORT of the pad (found after 6.6 tiles further left), which is also why Natro's
+        // right-only steps used to end in "pad overrun". So: a little further left first, then right, then left again.
         double moved = 0;
-        for (Moves.Key k : new Moves.Key[]{Moves.Key.D, Moves.Key.A}) {
-            double reach = k == Moves.Key.D ? 5 : 10;
+        Moves.Key[] legs = {Moves.Key.A, Moves.Key.D, Moves.Key.A}; double[] reaches = {3, 8, 10};
+        for (int leg = 0; leg < legs.length; leg++) {
+            Moves.Key k = legs[leg]; double reach = reaches[leg];
             for (double d = 0; d < reach; d += 0.6) {
                 walkHold(new Moves.Step('H', new Moves.Key[]{k}, 1.0, (int) Moves.tileMs(0.6, p.moveSpeed), null));
                 moved += 0.6;
@@ -1304,47 +1307,64 @@ final class Engine implements Runnable {
     /** After a loop: how far has the scene slid from the remembered view? Walk back until it lines up again, re-measuring
      *  after every short press; stop if it gets worse twice (never trust a wrong direction) or the match is lost.
      *  Returns false when the view no longer matches (the caller falls back to the sprinkler check). */
+    private int anchorSignX = 1, anchorSignY = 1; private boolean anchorSignKnown;
+    /** A slide reading worth acting on: a clear match, clearly better than "no slide", and not at the edge of the
+     *  search (live under the trees: false locks sat exactly at the edge, 44%, and walked the character out). */
+    private boolean trustSlide(double[] s, int h, double maxFrac) {
+        double edge = 0.9 * maxFrac * h;
+        return s[2] >= 0.6 && s[2] - s[3] >= 0.08 && Math.abs(s[0]) < edge && Math.abs(s[1]) < edge;
+    }
     private boolean anchorCorrect() {
         VisualAnchor now = view(true);
         if (now == null) return false;
-        double[] s = anchorRef.shiftTo(now, 0.30);
+        final double max = 0.25;
+        double[] s = anchorRef.shiftTo(now, max);
         int h = now.h; double tol = 0.035;
-        if (s[2] < 0.55) {
-            if (++anchorMiss >= 3) { Log.add(String.format(Locale.US, "anchor: view changed for 3 loops (match %.2f), remembering this spot instead", s[2])); setAnchor(); }
-            else Log.add(String.format(Locale.US, "anchor: no match this loop (%.2f)", s[2]));
+        double off0 = Math.hypot(s[0], s[1]) / h;
+        if (off0 <= tol && s[2] >= 0.6) { anchorMiss = 0; prevResult = String.format(Locale.US, "on the start spot (view %.1f%% off, match %.2f)", off0 * 100, s[2]); return true; }
+        if (!trustSlide(s, h, max)) {
+            if (++anchorMiss >= 3) { Log.add(String.format(Locale.US, "anchor: no trustworthy match for 3 loops (%.2f vs %.2f still), remembering this spot instead", s[2], s[3])); setAnchor(); }
+            else Log.add(String.format(Locale.US, "anchor: no trustworthy match this loop (%.2f, still %.2f, slide %+.0f/%+.0f)", s[2], s[3], s[0], s[1]));
             return false;
         }
         anchorMiss = 0;
-        double off = Math.hypot(s[0], s[1]) / h;
-        if (off <= tol) { prevResult = String.format(Locale.US, "on the start spot (view %.1f%% off, match %.2f)", off * 100, s[2]); return true; }
+        double off = off0;
         String was = phase; phase = "Correcting drift";
         decide("Correcting drift", "The view has slid since the start of farming: walking back to where the pattern started.",
                 String.format(Locale.US, "scene moved %+.0f / %+.0f px (match %.2f)", s[0], s[1], s[2]), "resume the pattern", s[2]);
-        double first = off, last = off; int worse = 0; long walked = 0;
-        while (walked < 4500) {
+        double first = off, last = off; long walked = 0; boolean flipped = false; String end = "";
+        while (walked < 2500) {
             checkpoint();
             EnumSet<Moves.Key> ks = EnumSet.noneOf(Moves.Key.class);
             // the scene slid right = we went left: walk right; slid down = we went forward: walk back
-            if (Math.abs(s[0]) > 0.4 * Math.abs(s[1])) ks.add(s[0] > 0 ? Moves.Key.D : Moves.Key.A);
-            if (Math.abs(s[1]) > 0.4 * Math.abs(s[0])) ks.add(s[1] > 0 ? Moves.Key.S : Moves.Key.W);
-            long press = off > 0.12 ? 220 : 140;
+            // (sign learned live: if the first press makes it worse, the camera sees it the other way round)
+            double sx = s[0] * anchorSignX, sy = s[1] * anchorSignY;
+            if (Math.abs(sx) > 0.4 * Math.abs(sy)) ks.add(sx > 0 ? Moves.Key.D : Moves.Key.A);
+            if (Math.abs(sy) > 0.4 * Math.abs(sx)) ks.add(sy > 0 ? Moves.Key.S : Moves.Key.W);
+            long press = off > 0.12 ? 200 : 130;
             if (!in.hold(ks, press)) break;
             walked += press; sleep(90);
             VisualAnchor v = view(false);
-            if (v == null) break;
-            s = anchorRef.shiftTo(v, 0.30);
-            if (s[2] < 0.5) { Log.add(String.format(Locale.US, "anchor: lost the match while correcting (%.2f)", s[2])); break; }
-            off = Math.hypot(s[0], s[1]) / h;
+            if (v == null) { end = " (no frame)"; break; }
+            double[] n = anchorRef.shiftTo(v, max);
+            if (!trustSlide(n, h, max) && Math.hypot(n[0], n[1]) / h > tol) { end = String.format(Locale.US, " (match lost %.2f)", n[2]); break; }
+            double o = Math.hypot(n[0], n[1]) / h;
+            if (o > last + 0.004) {   // worse
+                if (!anchorSignKnown && !flipped) {
+                    flipped = true; anchorSignX = -anchorSignX; anchorSignY = -anchorSignY;
+                    Log.add("anchor: the first press went the wrong way, flipping direction");
+                } else { end = " (getting further away, stopped)"; s = n; off = o; break; }
+            } else if (o < last - 0.004) anchorSignKnown = true;   // it worked: this direction is right from now on
+            s = n; off = o; last = o;
             if (off <= tol * 0.6) break;
-            if (off > last + 0.006) { if (++worse >= 2) { Log.add("anchor: getting further away, stopped (wrong way?)"); break; } } else worse = 0;
-            last = off;
         }
         stats.corrections++;
         phase = was; Monitor.fieldTrack.clear();
-        prevResult = String.format(Locale.US, "drift by sight: %.1f%% → %.1f%% of the screen in %d ms", first * 100, off * 100, walked);
+        prevResult = String.format(Locale.US, "drift by sight: %.1f%% → %.1f%% of the screen in %d ms%s", first * 100, off * 100, walked, end);
         Log.add("drift: " + prevResult);
         return true;
     }
+
 
     // ---- corner mode: a Natro pattern lined up in the sprinkler's corner every loop (like Skillet's wall alignment)
     /** {towards-corner key left/right, towards-corner key forward/back, tiles out from the side wall, tiles out from the end wall} */
@@ -1413,7 +1433,9 @@ final class Engine implements Runnable {
         lastRise = t0; outsideSince = 0; farmStart = t0; patYaw = 0; haveLastIn = false; Monitor.fieldTrack.clear(); wrongSince = 0; wrongSeen = 0;
         for (int loop = 1; ; loop++) {
             if (corner != null) cornerAlign(loop == 1);
-            if (loop == 1 && corner == null) { if (!sprinklerPlaced) Log.add("farm: no sprinkler placed this trip"); setAnchor(); }
+            // Drift by sight only where the pattern really closes: Skillet and corner mode line up on the hedges every
+            // loop, so they end where the walls put them, not where they began (live: the anchor fought Skillet, 30%→44%)
+            if (loop == 1 && corner == null) { if (!sprinklerPlaced) Log.add("farm: no sprinkler placed this trip"); if (!wallBound()) setAnchor(); else Log.add("anchor: off here - the hedges line this pattern up every loop"); }
             for (int i = 0; i < sk.size(); i++) {
                 checkpoint();
                 Moves.Step s = sk.get(i);
