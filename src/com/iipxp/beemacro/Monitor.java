@@ -20,6 +20,9 @@ final class Monitor {
     /** Red error banner check on the next raw frame (sprinkler placement). */
     /** Last time the Pollen counter's digits changed (tablet): pollen is coming in. */
     static volatile long pollenChanged; private static boolean[] pollenSig;
+    /** The game's own messages: last time it named Pine Tree Forest / another field, and since when another field
+     *  has been the latest one named (0 = Pine Tree Forest was last). */
+    static volatile long msgPine, msgOther, msgOtherSince;
     static volatile boolean bannerWanted; static volatile int bannerRows; static volatile long bannerTime;
     static volatile boolean shotWanted; static volatile int[] shotPx; static volatile int shotW, shotH; static volatile long shotTime;
     static volatile Vision.Result debugResult;
@@ -117,6 +120,9 @@ final class Monitor {
                         int d = Vision.textDiff(pollenSig, sig);
                         if (d > Math.max(10, sig.length / 400)) pollenChanged = tn;
                         pollenSig = sig;
+                        FieldMessages.Said said = FieldMessages.read(f.px, f.w, f.h);
+                        if (said == FieldMessages.Said.PINE_TREE) { msgPine = tn; msgOtherSince = 0; }
+                        else if (said == FieldMessages.Said.OTHER_FIELD) { msgOther = tn; if (msgOtherSince == 0) msgOtherSince = tn; }
                     }
                     if (ro.tablet && tn - honeyRead > 2000) { honeyRead = tn; long hv = HoneyOcr.read(f.px, f.w, f.h); if (hv > 0) honeySeen(hv, tn); }
                     final int[] fpx0 = ro.px; final int fw0 = ro.tablet ? Remap.W : f.w, fh0 = ro.tablet ? Remap.H : f.h;

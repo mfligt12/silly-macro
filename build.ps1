@@ -10,7 +10,7 @@ Remove-Item build -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory build/gen, build/classes, build/dex, build/test | Out-Null
 
 # 1. desktop tests (vision on real screenshots, Skillet port, profile)
-javac -encoding UTF-8 -d build/test src/com/iipxp/beemacro/Moves.java src/com/iipxp/beemacro/RecordedRoutes.java src/com/iipxp/beemacro/RecordedKeys.java src/com/iipxp/beemacro/Profile.java src/com/iipxp/beemacro/Vision.java src/com/iipxp/beemacro/Remap.java src/com/iipxp/beemacro/NavGuard.java src/com/iipxp/beemacro/FieldMap.java src/com/iipxp/beemacro/HoneyOcr.java src/com/iipxp/beemacro/Patterns.java src/com/iipxp/beemacro/Routes.java src/com/iipxp/beemacro/SprinklerFinder.java src/com/iipxp/beemacro/Catalog.java src/com/iipxp/beemacro/StackOcr.java src/com/iipxp/beemacro/Buffs.java src/com/iipxp/beemacro/Detector.java src/com/iipxp/beemacro/VisualAnchor.java test/BuildCatalog.java test/SelfTest.java
+javac -encoding UTF-8 -d build/test src/com/iipxp/beemacro/Moves.java src/com/iipxp/beemacro/RecordedRoutes.java src/com/iipxp/beemacro/RecordedKeys.java src/com/iipxp/beemacro/Profile.java src/com/iipxp/beemacro/Vision.java src/com/iipxp/beemacro/Remap.java src/com/iipxp/beemacro/NavGuard.java src/com/iipxp/beemacro/FieldMap.java src/com/iipxp/beemacro/HoneyOcr.java src/com/iipxp/beemacro/Patterns.java src/com/iipxp/beemacro/Routes.java src/com/iipxp/beemacro/SprinklerFinder.java src/com/iipxp/beemacro/Catalog.java src/com/iipxp/beemacro/StackOcr.java src/com/iipxp/beemacro/Buffs.java src/com/iipxp/beemacro/Detector.java src/com/iipxp/beemacro/VisualAnchor.java src/com/iipxp/beemacro/FieldMessages.java test/BuildCatalog.java test/SelfTest.java
 if ($LASTEXITCODE) { throw "test compile failed" }
 # the game-art catalog and screenshot fixtures are not in the public repo: skipped when missing (the app then runs without buff/token icons)
 if (Test-Path catalog/src) { java -cp build/test BuildCatalog; if ($LASTEXITCODE) { throw "catalog build failed" } }
@@ -18,7 +18,7 @@ if (Test-Path test/fixtures) { java -cp build/test SelfTest; if ($LASTEXITCODE) 
 
 # 2. android build
 & "$bt\aapt2.exe" compile --dir res -o build/res.zip
-& "$bt\aapt2.exe" link -o build/base.apk -I $jar --manifest AndroidManifest.xml -A assets --java build/gen --min-sdk-version 33 --target-sdk-version 36 build/res.zip
+& "$bt\aapt2.exe" link -o build/base.apk -I $jar --manifest AndroidManifest.xml -A assets --java build/gen --min-sdk-version 28 --target-sdk-version 36 build/res.zip
 if ($LASTEXITCODE) { throw "aapt2 failed" }
 $src = Get-ChildItem src, build/gen -Recurse -Filter *.java | ForEach-Object FullName
 $libs = Get-ChildItem libs -Filter *.jar | ForEach-Object FullName   # Shizuku API 13.1.5 (Apache-2.0), from Maven Central
@@ -26,7 +26,7 @@ javac --release 17 -encoding UTF-8 -Xlint:-deprecation -classpath ((@($jar) + $l
 if ($LASTEXITCODE) { throw "javac failed" }
 jar cf build/classes.jar -C build/classes .   # one input: listing every .class overflows the Windows command line
 $cls = "build/classes.jar"
-& "$bt\d8.bat" --release --min-api 33 --lib $jar --output build/dex $cls $libs
+& "$bt\d8.bat" --release --min-api 28 --lib $jar --output build/dex $cls $libs
 if ($LASTEXITCODE) { throw "d8 failed" }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $z = [IO.Compression.ZipFile]::Open("$PWD\build\base.apk", 'Update')

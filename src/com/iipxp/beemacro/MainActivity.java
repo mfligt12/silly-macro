@@ -108,10 +108,13 @@ public class MainActivity extends Activity {
         if (b == null) addContentView(new SplashView(this, null), new ViewGroup.LayoutParams(-1, -1));   // every launch (not on rotation)
         if (!p.shizukuOffered && !shizukuInstalled()) {
             p.shizukuOffered = true; App.save(this);
-            new android.app.AlertDialog.Builder(this).setTitle("Send keys without a PC?")
+            new android.app.AlertDialog.Builder(this).setTitle("Set up the key sender?")
                     .setMessage("Silly Macro's keyboard and mouse need a small helper started as the shell user. Shizuku (free, open source) "
-                            + "lets this device start it by itself, without a PC. After installing: open Shizuku, start it with Wireless "
-                            + "debugging, then press 'Start key sender on this device' (Settings tab) and allow Silly Macro.")
+                            + (android.os.Build.VERSION.SDK_INT >= 30
+                               ? "lets this device start it by itself, without a PC. After installing: open Shizuku, start it with Wireless debugging, "
+                               : "keeps it ready. Android 10 and older have no Wireless debugging, so after every restart start Shizuku once from a PC "
+                                 + "(USB debugging, the command is in Shizuku's guide) or with root, ")
+                            + "then press 'Start key sender on this device' (Settings tab) and allow Silly Macro.")
                     .setPositiveButton("Get Shizuku", (dl, w) -> getShizuku())
                     .setNegativeButton("Not now", null).show();
         }

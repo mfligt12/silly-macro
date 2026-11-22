@@ -21,7 +21,7 @@ final class ShizukuKeys {
     /** Blocking (call off the main thread). Returns a message for the user. */
     static String start(Context c) {
         try {
-            if (!Shizuku.pingBinder()) return "Shizuku isn't running: open the Shizuku app and press Start (wireless debugging)";
+            if (!Shizuku.pingBinder()) return "Shizuku isn't running: open the Shizuku app and press Start (" + (android.os.Build.VERSION.SDK_INT >= 30 ? "wireless debugging" : "Android 10 and older: start it from a PC or with root") + ")";
             if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
                 synchronized (ShizukuKeys.class) {
                     if (!listening) {   // start as soon as the user allows it in Shizuku's prompt

@@ -298,7 +298,7 @@ final class Engine implements Runnable {
      *  further into the field and try again (up to 3 times). Returns whether it was placed (no banner seen). */
     private boolean pressSprinkler(Moves.Key[] inward) {
         int code = android.view.KeyEvent.KEYCODE_1 + p.sprinklerSlot - 1;
-        for (int attempt = 1; attempt <= 3; attempt++) {
+        for (int attempt = 1; attempt <= 4; attempt++) {
             sleep(600);
             boolean a = in.key(code, 150); sleep(800);
             int rows = redBanner();
@@ -309,12 +309,13 @@ final class Engine implements Runnable {
                 return true;
             }
             stats.corrections++; saveGuardFrame("sprinkler_refused");
-            Log.add("sprinkler: Bee Swarm says we're not standing in the field (try " + attempt + "), stepping 2 tiles in");
-            walkHold(new Moves.Step('H', inward, 1.0, (int) Moves.tileMs(2, p.moveSpeed), null));
+            double in2 = 1 + attempt;   // 2, 3, 4, 5 tiles: live, 3×2 tiles weren't enough after the route came in off-line
+            Log.add(String.format(Locale.US, "sprinkler: Bee Swarm says we're not standing in the field (try %d), stepping %.0f tiles in", attempt, in2));
+            walkHold(new Moves.Step('H', inward, 1.0, (int) Moves.tileMs(in2, p.moveSpeed), null));
             long t0 = SystemClock.uptimeMillis();   // let the old banner fade so it isn't read as a new refusal
             while (redBanner() >= 4 && SystemClock.uptimeMillis() - t0 < 6000) sleep(400);
         }
-        Log.add("sprinkler: still refused after 3 tries, farming without it");
+        Log.add("sprinkler: still refused after 4 tries, farming without it");
         return false;
     }
     /** Rows of a red error banner on the next frame (0 if none or no frame in 1.5 s). */
@@ -719,6 +720,12 @@ final class Engine implements Runnable {
      *  at all for 60 s (stuck somewhere) = reset and start the trip over. */
     private void checkLost() {
         long now = SystemClock.uptimeMillis();
+        // The game names the field we gather in ("+N Honey (from Spider Field)"): another field named for 6 s with no
+        // Pine Tree Forest in between = wrong field, whatever the flower colours say (live: blue bubbles passed Spider)
+        if (p.field.equals("pinetree") && Monitor.msgOtherSince > 0 && now - Monitor.msgOther < 2500 && now - Monitor.msgOtherSince > 6000) {
+            saveGuardFrame("wrongfield_msg"); stats.fieldExits++; Monitor.msgOtherSince = 0;
+            throw new Recover("the game says we're gathering in another field (its messages name a Field, not Pine Tree Forest)");
+        }
         FieldMap.Read r = Monitor.fieldRead;
         if (r != null && Routes.blueField(p.field) && now - wrongSample >= 400) {   // red flowers are only "wrong" around blue fields
             wrongSample = now;
@@ -837,16 +844,17 @@ final class Engine implements Runnable {
         double v = h < 0 ? -1 : Math.round(speedFactor(r, h) * 1000) / 1000.0;
         // A new speed must be read on 2 different frames in a row (live: 1-stack Haste flickered x1.0/x1.1 every
         // ~0.3 s, which skews a 35 s distance-based walk by several tiles).
+        // live: 1-stack Haste still flipped x1.0/x1.1 every second on 2-frame confirmation, so 3 different frames now
         long t = Monitor.lastTime;
         if (v != prev) {
-            if (v == candSpeed && t != candTime) { candSpeed = Double.NaN; if (h > 0) hasteMul = h; return v; }
-            if (v != candSpeed) { candSpeed = v; candTime = t; }
+            if (v == candSpeed && t != candTime) { candTime = t; if (++candCount >= 2) { candSpeed = Double.NaN; candCount = 0; if (h > 0) hasteMul = h; return v; } return prev; }
+            if (v != candSpeed) { candSpeed = v; candTime = t; candCount = 0; }
             return prev;
         }
-        candSpeed = Double.NaN; if (h > 0) hasteMul = h;
+        candSpeed = Double.NaN; candCount = 0; if (h > 0) hasteMul = h;
         return prev;
     }
-    private double candSpeed = Double.NaN, hasteMul = 1; private long candTime;
+    private double candSpeed = Double.NaN, hasteMul = 1; private long candTime; private int candCount;
     /** Walk speed confirmed on the last walk, carried into the next one. */
     private double liveSpeed = 1.0;
     /** Live speed multiple: Haste stacks plus Coconut Haste, Bear Morph, Oil and Super Smoothie (Natro's formula, Moves.speedFactor). */
@@ -1158,7 +1166,8 @@ final class Engine implements Runnable {
     private void convert() {
         Vision.Result r = waitFor(x -> bagKnown(x) && promptKnown(x), 4000);
         if (r == null) { pause("Can't read backpack/hive prompt at hive"); checkpoint(); throw new Recover("convert: unreadable"); }
-        if (r.pollen < 1 && r.prompt != Vision.Prompt.TAP_RED) { Log.add("convert: backpack empty, nothing to convert"); return; }
+        // the bag bar rounds a big bag down to 0%; the game's own "Make Honey" prompt means there is pollen to convert
+        if (r.pollen < 1 && r.prompt != Vision.Prompt.TAP_RED && r.prompt != Vision.Prompt.TAP_BLUE) { Log.add("convert: backpack empty, nothing to convert"); return; }
         double startPct = r.pollen;
         resetBagWatch();
         if (r.prompt != Vision.Prompt.TAP_BLUE && r.prompt != Vision.Prompt.TAP_RED) {   // slid off the pad: find it again first
@@ -1435,6 +1444,9 @@ final class Engine implements Runnable {
         Log.add("field check: pine=" + pine + " other=" + other + " of 6 frames");
         // Under Pine Tree's leaves no flowers show at all (pine=0 other=0). The field was confirmed on arrival and Bee
         // Swarm accepted the sprinkler (it refuses outside a field), so that is trusted; another field's flowers are not.
+        long nowMs = SystemClock.uptimeMillis();
+        if (p.field.equals("pinetree") && Monitor.msgOtherSince > 0 && nowMs - Monitor.msgOther < 3000)
+            throw new Recover("the game's messages name another field, not Pine Tree Forest");
         boolean hidden = pine < 3 && other == 0 && arrivalOk && sprinklerPlaced;
         if (hidden) Log.add("field check: flowers hidden here (under the leaves); trusting the arrival check and the placed sprinkler");
         else if (pine < 3 || other > pine) throw new Recover(other > pine ? "landed in another field (red flowers), not Pine Tree" : "not standing in Pine Tree Forest");

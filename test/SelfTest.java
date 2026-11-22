@@ -1,4 +1,5 @@
 import com.iipxp.beemacro.VisualAnchor;
+import com.iipxp.beemacro.FieldMessages;
 import com.iipxp.beemacro.Buffs;
 import com.iipxp.beemacro.Catalog;
 import com.iipxp.beemacro.Detector;
@@ -384,6 +385,23 @@ public class SelfTest {
           int other = Vision.textDiff(sa, Vision.pollenText(bpx, pb.getWidth(), pb.getHeight()));
           int thr = Math.max(10, sa.length / 400);
           check(unchanged == 0 && world <= thr && other > thr, "pollen counter: unchanged " + unchanged + ", world moved " + world + ", other number " + other + " px differ (threshold " + thr + ")"); }
+        { // the game's own message names the field: Pine Tree Forest vs another field, read from the newest message
+          String[][] msgWant = {{"tab_field_middle.png", "PINE_TREE"}, {"tab_field_edge2.png", "PINE_TREE"}, {"tab_roses_messages.png", "OTHER_FIELD"},
+                             {"tab_field_night.png", "NONE"}, {"tab_field_wrong.png", "NONE"}, {"tab_under_tree.png", "NONE"}, {"tab_spawn_view.png", "NONE"}};
+          StringBuilder r = new StringBuilder(); boolean ok = true;
+          for (String[] wv : msgWant) {
+              BufferedImage im = ImageIO.read(new File("test/fixtures/" + wv[0])); int iw = im.getWidth(), ih = im.getHeight();
+              FieldMessages.Said said = FieldMessages.read(im.getRGB(0, 0, iw, ih, null, 0, iw), iw, ih);
+              ok &= said.name().equals(wv[1]); r.append(' ').append(wv[0].replace("tab_", "").replace(".png", "")).append('=').append(said);
+          }
+          int bad = 0, n = 0;   // no other fixture may claim a field it doesn't show
+          for (File f : new File("test/fixtures").listFiles()) {
+              if (!f.getName().startsWith("tab_")) continue;
+              BufferedImage im = ImageIO.read(f); int iw = im.getWidth(), ih = im.getHeight(); n++;
+              FieldMessages.Said said = FieldMessages.read(im.getRGB(0, 0, iw, ih, null, 0, iw), iw, ih);
+              if (said == FieldMessages.Said.OTHER_FIELD && !f.getName().equals("tab_roses_messages.png")) bad++;
+          }
+          check(ok && bad == 0, "game messages name the field:" + r + " (" + n + " frames, " + bad + " wrong 'other field')"); }
         // ---- sprinkler: learned from a before/after pair, then found again elsewhere (synthetic sprinkler on a real field frame)
         { BufferedImage fm = ImageIO.read(new File("test/fixtures/tab_field_middle.png"));
           Remap.Out o = Remap.apply(fm.getRGB(0, 0, fm.getWidth(), fm.getHeight(), null, 0, fm.getWidth()), fm.getWidth(), fm.getHeight());

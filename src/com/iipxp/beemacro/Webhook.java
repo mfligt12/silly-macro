@@ -106,7 +106,7 @@ final class Webhook {
         }
     }
 
-    private static String read(InputStream in) { try (InputStream i = in) { return i == null ? "" : new String(i.readAllBytes(), "UTF-8"); } catch (Exception e) { return ""; } }
+    private static String read(InputStream in) { try { return Fb.read(in); } catch (Exception e) { return ""; } }
     /** JSON string literal. */
     static String q(String s) {
         StringBuilder b = new StringBuilder("\"");

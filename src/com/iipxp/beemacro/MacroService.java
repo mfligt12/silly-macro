@@ -75,7 +75,7 @@ public class MacroService extends AccessibilityService {
                     PixelFormat.TRANSLUCENT);
             bl.gravity = Gravity.TOP | Gravity.START;
             bl.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
-            bl.setFitInsetsTypes(0);
+            if (android.os.Build.VERSION.SDK_INT >= 30) bl.setFitInsetsTypes(0);   // older: FLAG_LAYOUT_NO_LIMITS already covers the whole screen
             wm.addView(boxes, bl);
             BoxOverlay b = boxes;
             Monitor.onFrame = b::postInvalidate;
@@ -801,7 +801,7 @@ public class MacroService extends AccessibilityService {
                 tempRead = SystemClock.uptimeMillis();
                 android.content.Intent b = registerReceiver(null, new android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED));
                 int t10 = b == null ? Integer.MIN_VALUE : b.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, Integer.MIN_VALUE);
-                int th = ((android.os.PowerManager) getSystemService(POWER_SERVICE)).getCurrentThermalStatus();
+                int th = android.os.Build.VERSION.SDK_INT >= 29 ? ((android.os.PowerManager) getSystemService(POWER_SERVICE)).getCurrentThermalStatus() : 0;   // Android 9: battery temp only
                 if (t10 != Integer.MIN_VALUE) {
                     String[] h = heat(t10 / 10.0, th);
                     int lvl = b.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) * 100 / Math.max(1, b.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100));

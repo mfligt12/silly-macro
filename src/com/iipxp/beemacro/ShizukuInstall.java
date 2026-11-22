@@ -113,7 +113,7 @@ final class ShizukuInstall {
                 @Override public void onReceive(Context c, Intent i) {
                     int status = i.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
                     if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {   // Android asks you to confirm
-                        Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT, Intent.class);
+                        Intent confirm = (Intent) i.getParcelableExtra(Intent.EXTRA_INTENT);
                         if (confirm != null) { confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); c.startActivity(confirm); }
                         return;
                     }

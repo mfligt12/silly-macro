@@ -45,10 +45,11 @@ public class CaptureService extends Service {
         nm.createNotificationChannel(new NotificationChannel("cap", "Screen recognition", NotificationManager.IMPORTANCE_LOW));
         Notification n = new Notification.Builder(this, "cap").setSmallIcon(R.drawable.ic_launcher)
                 .setContentTitle("Silly Macro is watching the screen").setContentText("Pine Tree Forest recognition active").setOngoing(true).build();
-        startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
+        if (android.os.Build.VERSION.SDK_INT >= 29) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
+        else startForeground(1, n);   // Android 9: no service types
         if (mp != null || intent == null) return START_NOT_STICKY;
         try {
-            mp = getSystemService(MediaProjectionManager.class).getMediaProjection(intent.getIntExtra("code", 0), intent.getParcelableExtra("data", Intent.class));
+            mp = getSystemService(MediaProjectionManager.class).getMediaProjection(intent.getIntExtra("code", 0), (Intent) intent.getParcelableExtra("data"));
         } catch (Exception e) { Log.add("capture: projection failed " + e); stopSelf(); return START_NOT_STICKY; }
         if (mp == null) { stopSelf(); return START_NOT_STICKY; }
         thread = new HandlerThread("capture"); thread.start(); handler = new Handler(thread.getLooper());

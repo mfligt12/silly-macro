@@ -114,7 +114,7 @@ public final class Fb {
     }
     static String read(InputStream in) throws java.io.IOException {
         if (in == null) return "";
-        try (InputStream i = in) { return new String(i.readAllBytes(), "UTF-8"); }
+        try (java.util.Scanner s = new java.util.Scanner(in, "UTF-8").useDelimiter("\\A")) { return s.hasNext() ? s.next() : ""; }   // readAllBytes is Android 13+
     }
 
     /** Readable text for an error code. */
