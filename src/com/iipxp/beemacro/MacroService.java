@@ -180,7 +180,8 @@ public class MacroService extends AccessibilityService {
         };
         if (!keyboard() || !Keys.connect(this)) return false;
         boolean ok = Keys.autoClick(on, x, y);
-        Log.add("tool: auto-click " + (on ? "on" : "off") + (ok ? "" : " (FAILED)"));
+        // "doesn't click" reports: say which mouse the clicks go through (mouse 0 = Android shows no mouse, clicks are lost)
+        Log.add("tool: auto-click " + (on ? "on" : "off") + (ok ? "" : " (FAILED)") + (on ? " · key sender: " + Keys.emulatorState() : ""));
         return ok;
     }
 
