@@ -469,6 +469,14 @@ public class MacroService extends AccessibilityService {
             ui.post(tick);
         });
     }
+    /** Expanded panel low on a landscape phone ran off the bottom (Send report hidden, S23 2026-11-23): slide it up. */
+    void fitOnScreen() {
+        ui.postDelayed(() -> {
+            if (overlay == null) return;
+            int sh = screen().y, h = overlay.getHeight();
+            if (lp.y + h > sh) { lp.y = Math.max(0, sh - h); try { wm.updateViewLayout(overlay, lp); } catch (Exception ignored) { } }
+        }, 250);
+    }
     void removeOverlay() { if (overlay != null) { try { wm.removeView(overlay); } catch (Exception ignored) { } overlay = null; ui.removeCallbacks(tick); } }
     public boolean overlayShown() { return overlay != null; }
 
@@ -485,7 +493,7 @@ public class MacroService extends AccessibilityService {
         LinearLayout head = row();
         TextView title = text("🐝 Silly Macro", 12, 0xFFB9A8FF); title.setTypeface(null, android.graphics.Typeface.BOLD);
         head.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-        Button exp = small("▢", 0xFF2A2F45); exp.setOnClickListener(v -> { p.overlayExpanded = !p.overlayExpanded; App.save(this); if (p.overlayExpanded) reveal(expandedBox); else conceal(expandedBox, null); });
+        Button exp = small("▢", 0xFF2A2F45); exp.setOnClickListener(v -> { p.overlayExpanded = !p.overlayExpanded; App.save(this); if (p.overlayExpanded) { reveal(expandedBox); fitOnScreen(); } else conceal(expandedBox, null); });
         Button min = small("–", 0xFF2A2F45);
         Button close = small("✕", 0xFF2A2F45);
         Button miniStop = small("⛔", 0xFFD83A4A);
