@@ -51,8 +51,9 @@ public final class Profile {
     // Your private server (used by the "Open Bee Swarm" button)
     /** Your private server link (empty = Bee Swarm's normal game page). Used by "Open Bee Swarm" and overnight rejoins. */
     public String serverLink = "";
-    /** Bee Swarm Simulator's public game page: where "Open Bee Swarm" goes without a private server link. */
-    public static final String BEE_SWARM = "https://www.roblox.com/games/1537690962/Bee-Swarm-Simulator";
+    /** Without a private server link: Roblox's start link joins a public Bee Swarm server. The game page link used
+     *  before only showed the page and waited for Play, so a rejoin never got back in (Discord: "can't rejoin normal servers"). */
+    public static final String BEE_SWARM = "roblox://experiences/start?placeId=1537690962";
     public String joinLink() { return serverLink == null || serverLink.trim().isEmpty() ? BEE_SWARM : serverLink.trim(); }
 
     // Which layout these input coordinates were set for ("s23" / "tablet"); set once on first start
@@ -65,6 +66,9 @@ public final class Profile {
     public String sprinklerLoc = "Upper Left";
     public int sprinklerDist = 7, fieldRotate = 4;
     public int sprinklerSlot = 1;
+    public String sprinklerType = "Basic";   // Natro's types: how many to place (Basic 1, Silver 2, Golden 3, Diamond 4, Supreme 1)
+    public static final String[] SPRINKLERS = {"Basic", "Silver", "Golden", "Diamond", "Supreme", "None"};
+    public int sprinklerCount() { switch (sprinklerType) { case "Silver": return 2; case "Golden": return 3; case "Diamond": return 4; case "None": return 0; default: return 1; } }
     // Farming pattern: "Skillet" (default) or a Natro Macro pattern (Patterns.NAMES) with Natro's size / width / inversion
     public String pattern = "Skillet", patternSize = "M";
     public String field = "pinetree";                 // gathering field (Routes.FIELDS key); routes are Natro's walk paths

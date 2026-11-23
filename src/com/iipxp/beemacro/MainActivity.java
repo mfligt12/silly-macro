@@ -71,8 +71,11 @@ public class MainActivity extends Activity {
     TextView whStatus, hudState;
     /** Phone/tablet, model, Android version and the screen in landscape: what the HUD reader adapts to. */
     String deviceSummary() {
-        android.graphics.Rect b = getWindowManager().getMaximumWindowMetrics().getBounds();
-        int w = Math.max(b.width(), b.height()), h = Math.min(b.width(), b.height());
+        // getMaximumWindowMetrics is Android 11+: on Android 9/10 (Huawei EMUI) it crashed every open after sign-in (Discord)
+        android.util.DisplayMetrics m = new android.util.DisplayMetrics();
+        if (android.os.Build.VERSION.SDK_INT >= 30) { android.graphics.Rect r = getWindowManager().getMaximumWindowMetrics().getBounds(); m.widthPixels = r.width(); m.heightPixels = r.height(); }
+        else getWindowManager().getDefaultDisplay().getRealMetrics(m);
+        int w = Math.max(m.widthPixels, m.heightPixels), h = Math.min(m.widthPixels, m.heightPixels);
         boolean tab = Remap.tablet(w, h);
         String os = "Android " + android.os.Build.VERSION.RELEASE + " (API " + android.os.Build.VERSION.SDK_INT + ")";
         return (tab ? "Tablet" : "Phone") + " · " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + "\n" + os
@@ -88,6 +91,27 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        // a crash on an untested phone (Huawei: "grey screen then it kicks me off") leaves crash.txt; the next open shows it
+        // with a Share button instead of crashing in the same spot again, then the open after that tries normally
+        java.io.File crash = new java.io.File(getFilesDir(), "crash.txt");
+        Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+            try (java.io.FileWriter fw = new java.io.FileWriter(crash)) { fw.write(versionName() + " · " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + " · Android " + android.os.Build.VERSION.RELEASE + "\n" + android.util.Log.getStackTraceString(e)); } catch (Exception ignored) { }
+            if (prev != null) prev.uncaughtException(t, e);
+        });
+        if (crash.exists()) {
+            String text = "Silly Macro crashed\n";
+            try { text += new String(java.nio.file.Files.readAllBytes(crash.toPath()), "UTF-8"); } catch (Exception ignored) { }
+            crash.delete();
+            final String report = text.replaceAll("[\\w.+-]+@[\\w-]+\\.[\\w.]+", "[email hidden]");
+            TextView tv = new TextView(this); tv.setText(report); tv.setTextSize(11); tv.setTextIsSelectable(true); tv.setPadding(40, 40, 40, 40);
+            ScrollView sv = new ScrollView(this); sv.addView(tv); setContentView(sv);
+            new android.app.AlertDialog.Builder(this).setTitle("Silly Macro crashed last time")
+                    .setMessage("Please share this in #bug-reports so it can be fixed. Open the app again to retry.")
+                    .setPositiveButton("Share", (d, w) -> startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, report), "Share crash report")))
+                    .setNegativeButton("Close", (d, w) -> finish()).show();
+            return;
+        }
         p = App.profile(this);
         if (checkSelfPermission("android.permission.POST_NOTIFICATIONS") != 0) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
         getWindow().setStatusBarColor(Ui.BG1); getWindow().setNavigationBarColor(BG);
@@ -523,6 +547,12 @@ public class MainActivity extends Activity {
                         } catch (NumberFormatException e) { toast("Type a number like 29.9"); }
                     }).setNegativeButton("Cancel", null).show();
         }));
+        // here, not only on the advanced Sequences tab (Discord: "there was no sprinkler option in the app")
+        LinearLayout sp = card("Sprinkler");
+        Button st = button("Sprinkler: " + p.sprinklerType, 0, null);
+        st.setOnClickListener(v -> { int i = java.util.Arrays.asList(Profile.SPRINKLERS).indexOf(p.sprinklerType); p.sprinklerType = Profile.SPRINKLERS[(i + 1) % Profile.SPRINKLERS.length]; App.save(this); st.setText("Sprinkler: " + p.sprinklerType); });
+        sp.addView(st);
+        sp.addView(stepper("Sprinkler hotbar slot (key)", () -> "" + p.sprinklerSlot, d -> p.sprinklerSlot = clamp(p.sprinklerSlot + d, 1, 7)));
         LinearLayout cv = card("Conversion");
         cv.addView(toggle("Automatic conversion", p.autoConvert, on -> p.autoConvert = on));
         cv.addView(toggle("Automatic return to field", p.autoReturn, on -> p.autoReturn = on));
@@ -643,6 +673,14 @@ public class MainActivity extends Activity {
         dc.addView(url);
         TextView whState = tv(Webhook.valid(p.webhookUrl) ? "Webhook saved ✔" : "No webhook yet", 12, Webhook.valid(p.webhookUrl) ? Ui.GREEN : DIM);
         LinearLayout ub = row();
+        // a password field opens Samsung's secure keyboard, which can't paste (Discord): read the clipboard ourselves
+        ub.addView(button("Paste", 0, v -> {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            android.content.ClipData cd = cm == null ? null : cm.getPrimaryClip();
+            CharSequence t = cd == null || cd.getItemCount() == 0 ? null : cd.getItemAt(0).coerceToText(this);
+            if (t == null || t.toString().trim().isEmpty()) { toast("Copy the webhook URL in Discord first"); return; }
+            url.setText(t.toString().trim()); toast("Pasted: now press Save");
+        }), new LinearLayout.LayoutParams(0, dp(48), 1));
         ub.addView(button("Save", PURPLE, v -> {
             String u = url.getText().toString().trim();
             if (!u.isEmpty() && !Webhook.valid(u)) { toast("That isn't a Discord webhook URL"); return; }

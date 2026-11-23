@@ -243,7 +243,7 @@ final class Engine implements Runnable {
         if (firstKbTrip) {   // a reset empties the bag: never throw away pollen the player already has
             firstKbTrip = false;
             Vision.Result r = waitFor(this::bagKnown, 3000);
-            if (r != null && r.pollen >= 1) {
+            if (r != null && r.pollen >= 5) {   // live: paused over 1%, not worth stopping for
                 if (promptKnown(r) && (r.prompt == Vision.Prompt.TAP_BLUE || r.prompt == Vision.Prompt.TAP_RED)) { Log.add(String.format(Locale.US, "start: bag at %.0f%% and at the hive, converting before the first reset", r.pollen)); phase("Converting", "convert"); convert(); }
                 else { pause(String.format(Locale.US, "Your bag has %.0f%% pollen and you are not at your hive. Starting resets the character and empties the bag. Convert first, or press Resume to continue anyway.", r.pollen)); checkpoint(); }
             }
@@ -325,9 +325,12 @@ final class Engine implements Runnable {
             boolean a = in.key(android.view.KeyEvent.KEYCODE_1 + p.sprinklerSlot - 1, 150); sleep(800);
             int rows = redBanner();
             if (rows < 4) {
-                boolean b = in.key(android.view.KeyEvent.KEYCODE_1 + p.sprinklerSlot - 1, 150); sleep(400);
-                Log.add("sprinkler: placed with key " + p.sprinklerSlot + (attempt > 1 ? " on try " + attempt : "") + " (" + (a ? "sent" : "NOT sent") + ", " + (b ? "sent" : "NOT sent") + ")");
+                int n = p.sprinklerCount();
+                // a second press re-places a single sprinkler on the same spot; with Silver+ it would stack two on one spot
+                boolean b = n == 1 && in.key(android.view.KeyEvent.KEYCODE_1 + p.sprinklerSlot - 1, 150); sleep(400);
+                Log.add("sprinkler: placed with key " + p.sprinklerSlot + (attempt > 1 ? " on try " + attempt : "") + " (" + (a ? "sent" : "NOT sent") + (n == 1 ? ", " + (b ? "sent" : "NOT sent") : "") + ")");
                 sprinklerPlaced = true;
+                if (n > 1) placeMore(n - 1, inward);
                 return true;
             }
             stats.corrections++; saveGuardFrame("sprinkler_refused");
@@ -340,6 +343,19 @@ final class Engine implements Runnable {
         Log.add("sprinkler: still refused after 4 tries, farming without it");
         return false;
     }
+    /** Silver / Golden / Diamond (Discord: "placed once", silver sprinkler): each extra one 2 tiles further into the
+     *  field, then back to the first spot so the pattern starts where it always does. */
+    private void placeMore(int extra, Moves.Key[] inward) {
+        Moves.Key[] back = new Moves.Key[inward.length];
+        for (int i = 0; i < inward.length; i++) back[i] = inward[i] == Moves.Key.W ? Moves.Key.S : inward[i] == Moves.Key.S ? Moves.Key.W : inward[i] == Moves.Key.A ? Moves.Key.D : Moves.Key.A;
+        for (int k = 1; k <= extra; k++) {
+            walkHold(new Moves.Step('H', inward, 1.0, (int) Moves.tileMs(2, p.moveSpeed), null));
+            sleep(500);
+            boolean ok = in.key(android.view.KeyEvent.KEYCODE_1 + p.sprinklerSlot - 1, 150); sleep(600);
+            Log.add("sprinkler: extra " + k + "/" + extra + " (" + (ok ? "sent" : "NOT sent") + ")");
+        }
+        walkHold(new Moves.Step('H', back, 1.0, (int) Moves.tileMs(2.0 * extra, p.moveSpeed), null));
+    }
     /** Rows of a red error banner on the next frame (0 if none or no frame in 1.5 s). */
     private int redBanner() {
         long since = Monitor.bannerTime; Monitor.bannerWanted = true;
@@ -350,7 +366,8 @@ final class Engine implements Runnable {
     private boolean sprinklerPlaced, arrivalOk;
     private void placeSprinkler(boolean walk, Moves.Key[] inward) {
         sprinkler = null; sprinklerPlaced = false;
-        if (walk) walkToSprinklerSpot();
+        if (walk) walkToSprinklerSpot();   // also where the pattern starts, so it runs with "None" too
+        if (p.sprinklerCount() == 0) { Log.add("sprinkler: none set, not placing"); return; }
         boolean learn = p.sprinklerAnchor && p.keyboard();
         int[] before = null;
         if (learn) { in.hold(MacroService.set(new Moves.Key[]{Moves.Key.S}), Moves.tileMs(3, p.moveSpeed)); sleep(500); before = frames3(); in.hold(MacroService.set(new Moves.Key[]{Moves.Key.W}), Moves.tileMs(3, p.moveSpeed)); }
@@ -560,7 +577,14 @@ final class Engine implements Runnable {
         if (bestTurn != 0) { in.rotate(bestTurn > 4 ? bestTurn - 8 : bestTurn); sleep(450); }
         Log.add(String.format(Locale.US, "camera: hive row %.2f after %d turns, zooming in by eye", topRow, bestTurn));
         double f = zoomToHive();
-        if (f < FACING_PAD && f >= FACING_SPAWN) {   // the hives are there but far: the central spawn, walk to the pad as Natro does
+        // the hives are there but far: the central spawn, walk to the pad as Natro does. On the tablet the pad's best view
+        // is at zoom step 1 (0.69-0.75 live), the spawn's at step 3 (0.55-0.59, above the pad score). Phones peak later
+        // (S23 pad: step 5), so a far zoom only means spawn when our pad's prompt isn't up either.
+        // only the tap prompt counts: ownHive's blue banner read "yes" at the spawn live (no prompt on screen)
+        Vision.Result pr = zoomStep >= 3 ? waitFor(x -> promptKnown(x) && (x.prompt == Vision.Prompt.TAP_BLUE || x.prompt == Vision.Prompt.TAP_RED), 2500) : null;
+        boolean spawn = f >= FACING_SPAWN && (f < FACING_PAD || (zoomStep >= 3 && pr == null));
+        Log.add("camera: " + (spawn ? "at the central spawn" : "at our hive pad") + String.format(Locale.US, " (view %.2f, zoom step %d%s)", f, zoomStep, pr != null ? ", " + pr.prompt + " prompt" : ""));
+        if (spawn) {
             decide("Walking to hive", "Respawned at the central spawn; walking to the hive pad.", String.format(Locale.US, "hive view %.2f", f), "face the hive from the pad", 0.8);
             run(Moves.natroSpawnToHive(p.hiveSlot, p.moveSpeed), "spawn to hive");
             sleep(500);
@@ -573,6 +597,7 @@ final class Engine implements Runnable {
     }
 
     /** Zoom in one step at a time while the hive view gets better; stop just after its peak and step back to it. */
+    private int zoomStep;   // zoom-in steps from fully out to the best hive view, set by zoomToHive
     private double zoomToHive() {
         double best = -1; int bestStep = 0, step = 0;
         for (step = 1; step <= 16; step++) {
@@ -582,11 +607,19 @@ final class Engine implements Runnable {
             if (f > best) { best = f; bestStep = step; }
             if (best >= FACING_PAD && f < 0.8 * best) break;   // past the best view
         }
-        for (int k = Math.min(step, 16); k > bestStep; k--) { in.key(android.view.KeyEvent.KEYCODE_O, 60); SystemClock.sleep(90); }
+        // zooming in stops at Roblox's closest zoom, so stepping back out the same count overshot (0.55 at step 3 read
+        // 0.20 after, live): go all the way out, the same start as above, and back in exactly bestStep times
+        for (int k = 0; k < 20; k++) { in.key(android.view.KeyEvent.KEYCODE_O, 60); SystemClock.sleep(70); }
+        sleep(900);   // the zoom-out keeps animating: zooming in at 400 ms landed far out (0.71 read 0.01, live)
+        for (int k = 0; k < bestStep; k++) { in.key(android.view.KeyEvent.KEYCODE_I, 60); sleep(250); }
+        zoomStep = bestStep;
         sleep(400);
+        // one re-check after stepping back read a bit under the peak (0.40 → 0.33, bees/balloon in front) and threw a
+        // good view away: reset twice in a row live (2026-11-22). Re-check up to 3 times; near the peak = the peak.
         double f = readFacing();
+        for (int i = 0; i < 2 && f < 0.8 * best; i++) { sleep(300); f = Math.max(f, readFacing()); }
         Log.add(String.format(Locale.US, "camera: best hive view %.2f at zoom step %d (now %.2f)", best, bestStep, f));
-        return f;
+        return f >= 0.8 * best ? Math.max(f, best) : f;
     }
 
     private double readFacing() {
@@ -770,10 +803,19 @@ final class Engine implements Runnable {
                 throw new Recover("in another field (red flowers all around for 8 s): resetting to start over");
             }
         }
+        if (stalledFull()) return;   // farmLoop walks home with it
         if (now - farmStart > 60_000 && now - lastRise > 60_000) {
             saveGuardFrame("nopollen");
             throw new Recover("no pollen for 60 s while farming (stuck or not in a field): resetting to start over");
         }
+    }
+
+    /** A full bag stops the pollen too. When the bar reads a bit under the limit (93% vs 95%), the 60 s "no pollen"
+     *  reset fired and threw away a full bag (Discord: "when I get full the macro tries to reset"). Near the limit
+     *  with nothing coming in for 30 s = full. ponytail: fixed 15-point window, make it a setting if bags vary more */
+    private boolean stalledFull() {
+        long now = SystemClock.uptimeMillis();
+        return lastPct >= 60 && lastPct >= p.backpackThreshold - 15 && now - farmStart > 30_000 && now - lastRise > 30_000;
     }
 
     /** Pattern is suspended until several frames in a row confirm we are back on the field. */
@@ -1524,7 +1566,7 @@ final class Engine implements Runnable {
         double startPct = r0.pollen;
         long t0 = SystemClock.uptimeMillis();
         if (Monitor.honey > 0) stats.honey(Monitor.honey);
-        lastRise = t0; outsideSince = 0; farmStart = t0; patYaw = 0; haveLastIn = false; Monitor.fieldTrack.clear(); wrongSince = 0; wrongSeen = 0;
+        lastRise = t0; outsideSince = 0; farmStart = t0; lastPct = -1; patYaw = 0; haveLastIn = false; Monitor.fieldTrack.clear(); wrongSince = 0; wrongSeen = 0;
         for (int loop = 1; ; loop++) {
             if (corner != null) cornerAlign(loop == 1);
             // Drift by sight only where the pattern really closes: Skillet and corner mode line up on the hedges every
@@ -1543,11 +1585,14 @@ final class Engine implements Runnable {
                 rate(r);
                 checkLost();
                 if (s.type == 'W' && !(r != null && bagKnown(r) && r.pollen >= p.backpackThreshold)) maybeCollect();
-                if (r != null && bagKnown(r) && r.pollen >= p.backpackThreshold) {
+                boolean stall = stalledFull();
+                if (stall || (r != null && bagKnown(r) && r.pollen >= p.backpackThreshold)) {
+                    double pct = r != null && bagKnown(r) && r.pollen >= p.backpackThreshold ? r.pollen : lastPct;
+                    if (stall) Log.add(String.format(Locale.US, "farm: no pollen for 30 s at %.0f%%: the bag is full", lastPct));
                     in.emergencyRelease(); in.arm();
-                    stats.fill(r.pollen);
-                    Log.add(String.format(Locale.US, "farm: backpack %.0f%% ≥ %d%% after %s", r.pollen, p.backpackThreshold, Stats.fmt(SystemClock.uptimeMillis() - t0)));
-                    hook("field", "🎒 Backpack full", String.format(Locale.US, "%.0f%% after %s in %s", r.pollen, Stats.fmt(SystemClock.uptimeMillis() - t0), Routes.name(p.field)), Webhook.GOLD, true);
+                    stats.fill(pct);
+                    Log.add(String.format(Locale.US, "farm: backpack %.0f%% ≥ %d%% after %s", pct, p.backpackThreshold, Stats.fmt(SystemClock.uptimeMillis() - t0)));
+                    hook("field", "🎒 Backpack full", String.format(Locale.US, "%.0f%% after %s in %s", pct, Stats.fmt(SystemClock.uptimeMillis() - t0), Routes.name(p.field)), Webhook.GOLD, true);
                     if (i < sk.size() - 1) unwindCamera(sk, i);
                     return;
                 }

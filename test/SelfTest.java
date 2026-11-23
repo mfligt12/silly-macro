@@ -425,7 +425,9 @@ public class SelfTest {
               {"Pixel 9 Pro", 2856, 1280}, {"Pixel 8 Pro/9 Pro XL", 2992, 1344}, {"S22-S26 Ultra", 3088, 1440},
               {"Pixel 6 Pro/7 Pro", 3120, 1440}, {"S20/S21 Ultra, Note 20 Ultra", 3200, 1440}, {"OnePlus 10 Pro-13", 3216, 1440},
               {"Xperia 1 III-VII (4K 21:9)", 3840, 1644}, {"Galaxy A 19.5:9 720p", 1560, 720},
-              {"Pixel Fold outer (17.4:9)", 2092, 1080}, {"Z Fold3-6 outer (24.5:9)", 2316, 904}};
+              {"Pixel Fold outer (17.4:9)", 2092, 1080}, {"Z Fold3-6 outer (24.5:9)", 2316, 904},
+              {"Pixel 9/10, 9-10 Pro Fold outer", 2424, 1080}, {"OnePlus 12R/13R", 2780, 1264}, {"OnePlus Nord 3/4", 2772, 1240},
+              {"Moto Edge 50-60 Pro/Ultra, Edge 2025 (1.5K)", 2712, 1220}, {"OnePlus Open outer", 2484, 1116}, {"Razr 60 Ultra / Razr+ 2025", 2992, 1224}};
           String[] fxs = {"s23_kb_turn0.png", "s23_pepper_field.png", "field_pinetree.png", "haste_x5.png", "hasteon1.png", "hasteoff1.png"};
           java.util.List<int[]> plPx = new java.util.ArrayList<>(); java.util.List<Vision.Result> fo = new java.util.ArrayList<>();
           for (String fx : fxs) { BufferedImage im = ImageIO.read(new File("test/fixtures/" + fx)); int[] q = im.getRGB(0, 0, 2340, 1080, null, 0, 2340); plPx.add(q); fo.add(Vision.analyze(q, 2340, 1080)); }
