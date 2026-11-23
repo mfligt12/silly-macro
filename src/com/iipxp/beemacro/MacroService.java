@@ -633,6 +633,20 @@ public class MacroService extends AccessibilityService {
             if (CaptureService.inst != null) { CaptureService.stopCapture(this); toast("Screen capture stopped"); } else toast("Screen capture is not running");
         });
         expandedBox.addView(capOff);
+        if (Account.configured(this)) {   // same report as Settings → Debug, with a fresh in-game screenshot (panel hidden for it)
+            Button rep = small("Send report to the developer", 0xFF5B3FC4);
+            reportBox = new LinearLayout(this); reportBox.setOrientation(LinearLayout.VERTICAL); reportBox.setVisibility(View.GONE);
+            reportImg = new android.widget.ImageView(this); reportImg.setAdjustViewBounds(true);
+            reportInfo = text("", 11, 0xFFB8BCD0);
+            LinearLayout rr = row();
+            reportSend = small("Send", 0xFF7C3AED); Button cancel = small("Cancel", 0xFF2A2F45);
+            reportSend.setOnClickListener(v -> sendReport());
+            cancel.setOnClickListener(v -> { reportLog = null; reportJpeg = null; conceal(reportBox, null); });
+            rr.addView(reportSend, new LinearLayout.LayoutParams(0, dp(34), 1)); rr.addView(cancel, new LinearLayout.LayoutParams(0, dp(34), 1));
+            reportBox.addView(reportImg, new LinearLayout.LayoutParams(-1, -2)); reportBox.addView(reportInfo); reportBox.addView(rr);
+            rep.setOnClickListener(v -> prepareReport());
+            expandedBox.addView(rep); expandedBox.addView(reportBox);
+        }
         Button calT = small("Calibration keypad", 0xFF2A2F45);
         calT.setOnClickListener(v -> {
             boolean open = calBox.getVisibility() != View.VISIBLE;   // keypad replaces the details so the panel fits on screen
@@ -807,6 +821,49 @@ public class MacroService extends AccessibilityService {
             ui.postDelayed(this, 500);
         }
     };
+
+    // ---- "Send report to the developer" from the panel: the counter strip of a frame taken with the panel hidden + the
+    // debug log; shown here first, uploaded only on Send, off the macro's thread
+    private LinearLayout reportBox; private android.widget.ImageView reportImg; private TextView reportInfo; private Button reportSend;
+    private volatile String reportLog; private volatile byte[] reportJpeg;
+    void prepareReport() {
+        if (!Account.signedIn(this)) { reportImg.setVisibility(View.GONE); reportInfo.setText("Sign in to Silly Macro first."); reportSend.setEnabled(false); reveal(reportBox); return; }
+        reportInfo.setText("Taking the counter screenshot…"); reportImg.setVisibility(View.GONE); reportSend.setEnabled(false); reveal(reportBox);
+        if (overlay != null) overlay.setVisibility(View.INVISIBLE);   // the panel must not be in the shot
+        new Thread(() -> {
+            SystemClock.sleep(400);
+            long t = SystemClock.uptimeMillis(); Monitor.shotWanted = true;
+            while (Monitor.shotTime < t && SystemClock.uptimeMillis() - t < 2500) SystemClock.sleep(40);
+            int[] px = Monitor.shotTime >= t ? Monitor.shotPx : null; int w = Monitor.shotW, h = Monitor.shotH;
+            ui.post(() -> { if (overlay != null) overlay.setVisibility(View.VISIBLE); });
+            int[] b = px == null ? null : Report.hudBand(w, h);
+            android.graphics.Bitmap bm = b == null ? null : android.graphics.Bitmap.createBitmap(Report.crop(px, w, b), b[2] - b[0], b[3] - b[1], android.graphics.Bitmap.Config.ARGB_8888);
+            byte[] jpg = bm == null ? null : MainActivity.jpeg(bm);
+            String log = MainActivity.reportLog(this);
+            Vision.Result r = Monitor.last; boolean game = r != null && r.screen == Vision.Screen.GAME;
+            reportLog = log; reportJpeg = jpg;
+            ui.post(() -> {
+                if (jpg != null) { reportImg.setImageBitmap(bm); reportImg.setVisibility(View.VISIBLE); }
+                reportInfo.setText("Only these 2 things are sent (with your account id, app version, phone model):\n"
+                        + (jpg != null ? "1. this screenshot of the counters, " + jpg.length / 1024 + " KB" + (game ? "" : " (⚠ Bee Swarm not recognised on screen)")
+                                       : "1. no screenshot (" + (px == null ? "screen capture is off: Home step 3" : "hold the device sideways") + ")")
+                        + "\n2. your debug log, " + Report.lines(log) + " lines (emails hidden)");
+                reportSend.setEnabled(true);
+            });
+        }, "report-shot").start();
+    }
+    void sendReport() {
+        String log = reportLog; byte[] jpg = reportJpeg; if (log == null) return;
+        reportSend.setEnabled(false); reportInfo.setText("Sending…");
+        new Thread(() -> {   // never on the macro's thread: a run keeps going while this uploads
+            String err = Account.sendReport(this, log, jpg);
+            ui.post(() -> {
+                reportInfo.setText(err == null ? "✔ Report sent. Thanks!" : "Not sent: " + err); reportImg.setVisibility(View.GONE);
+                reportLog = null; reportJpeg = null;
+                if (err == null) ui.postDelayed(() -> conceal(reportBox, null), 3000); else reportSend.setEnabled(false);
+            });
+        }, "report-send").start();
+    }
 
     LinearLayout row() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.HORIZONTAL); l.setGravity(Gravity.CENTER_VERTICAL); return l; }
     TextView text(String s, int sp, int color) { TextView t = new TextView(this); t.setText(s); t.setTextSize(sp); t.setTextColor(color); return t; }

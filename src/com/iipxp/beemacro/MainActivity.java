@@ -70,18 +70,24 @@ public class MainActivity extends Activity {
     // ---- dashboard views
     TextView whStatus, hudState;
     /** Phone/tablet, model, Android version and the screen in landscape: what the HUD reader adapts to. */
-    String deviceSummary() {
+    String deviceSummary() { return deviceSummary(this); }
+    static String deviceSummary(android.content.Context c) {
+        android.view.WindowManager wmgr = c.getSystemService(android.view.WindowManager.class);
         // getMaximumWindowMetrics is Android 11+: on Android 9/10 (Huawei EMUI) it crashed every open after sign-in (Discord)
         android.util.DisplayMetrics m = new android.util.DisplayMetrics();
-        if (android.os.Build.VERSION.SDK_INT >= 30) { android.graphics.Rect r = getWindowManager().getMaximumWindowMetrics().getBounds(); m.widthPixels = r.width(); m.heightPixels = r.height(); }
-        else getWindowManager().getDefaultDisplay().getRealMetrics(m);
+        if (android.os.Build.VERSION.SDK_INT >= 30) { android.graphics.Rect r = wmgr.getMaximumWindowMetrics().getBounds(); m.widthPixels = r.width(); m.heightPixels = r.height(); }
+        else wmgr.getDefaultDisplay().getRealMetrics(m);
         int w = Math.max(m.widthPixels, m.heightPixels), h = Math.min(m.widthPixels, m.heightPixels);
         boolean tab = Remap.tablet(w, h);
         String os = "Android " + android.os.Build.VERSION.RELEASE + " (API " + android.os.Build.VERSION.SDK_INT + ")";
         return (tab ? "Tablet" : "Phone") + " · " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + "\n" + os
                 + (android.os.Build.VERSION.SDK_INT < 33 ? "  ⚠ Silly Macro needs Android 13 or newer" : "")
                 + "\nScreen " + w + " × " + h + " (" + String.format(java.util.Locale.US, "%.2f", w / (double) h) + ":1, "
-                + getResources().getDisplayMetrics().densityDpi + " dpi)";
+                + c.getResources().getDisplayMetrics().densityDpi + " dpi)";
+    }
+    /** The report's log: the same text as Share log (emails hidden), capped for one document. */
+    static String reportLog(android.content.Context c) {
+        return Report.log("Silly Macro " + Account.version(c) + "\n" + deviceSummary(c) + "\nHUD: " + Monitor.calState + "\n\n" + Log.dump(Report.LOG_LINES));
     }
     TextView heroSub, heroState, tPhase, tTimer, tBag, tHive, tLoops, tRate, tField, tPattern, aiText, startLabel;
     Ui.Bar bagBar; Ui.Pulse livePulse, railPulse; LinearLayout buffChips; View startGlow;
@@ -754,7 +760,7 @@ public class MainActivity extends Activity {
     /** Shows exactly what goes out (the Honey/Pollen counter strip + the log) and sends it only on "Send". */
     void sendReport() {
         if (!Account.signedIn(this)) { toast("Sign in to Silly Macro first"); return; }
-        String log = Report.log("Silly Macro " + versionName() + "\n" + deviceSummary() + "\nHUD: " + Monitor.calState + "\n\n" + Log.dump(Report.LOG_LINES));
+        String log = reportLog(this);
         int[] shot = Monitor.hudShot; int sw = Monitor.hudShotW, sh = Monitor.hudShotH;
         android.graphics.Bitmap bm = shot == null ? null : android.graphics.Bitmap.createBitmap(shot, sw, sh, android.graphics.Bitmap.Config.ARGB_8888);
         byte[] jpeg = bm == null ? null : jpeg(bm);
@@ -764,7 +770,8 @@ public class MainActivity extends Activity {
             android.widget.ImageView iv = new android.widget.ImageView(this); iv.setImageBitmap(bm); iv.setAdjustViewBounds(true);
             box.addView(iv, new LinearLayout.LayoutParams(-1, -2));
             long age = (android.os.SystemClock.uptimeMillis() - Monitor.hudShotTime) / 1000;
-            box.addView(tv("1. This screenshot of the Honey/Pollen counters (" + jpeg.length / 1024 + " KB, from " + (age < 60 ? age + " s" : age / 60 + " min") + " ago)", 12, DIM));
+            box.addView(tv("1. This screenshot of the Honey/Pollen counters (" + jpeg.length / 1024 + " KB, from " + (age < 60 ? age + " s" : age / 60 + " min") + " ago)"
+                    + (Monitor.hudShotGame ? "" : "\n⚠ Taken before the app recognised Bee Swarm: it may not show the counters. For a better one, use Send report on the floating panel while in the game."), 12, Monitor.hudShotGame ? DIM : Ui.GOLD));
         } else box.addView(tv("1. No counter screenshot (screen capture hasn't seen the game yet: allow it in Home step 3, open Bee Swarm sideways for a few seconds, then come back)", 12, Ui.GOLD));
         box.addView(tv("2. Your debug log, " + Report.lines(log) + " lines (emails hidden)", 12, DIM));
         final byte[] img = jpeg;
