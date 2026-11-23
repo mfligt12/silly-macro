@@ -31,6 +31,7 @@ import java.util.Map;
  */
 public final class KeyServer {
     public static final int PORT = 28761;
+
     public static final String TOKEN_FILE = "/sdcard/Android/data/com.iipxp.beemacro/files/key_token";
     private static Object im; private static Method inject;
 
@@ -71,7 +72,7 @@ public final class KeyServer {
             for (String line; (line = in.readLine()) != null; ) {
                 line = line.trim();
                 if (line.equals("p")) { out.println("ok"); continue; }
-                if (line.equals("st")) { out.println("ok " + emulator + " (keyboard " + keyboardId() + ", mouse " + mouseId() + ") +hk"); continue; }   // +hk: knows "hk"   // which emulator, and the device ids keys/clicks use
+                if (line.equals("st")) { out.println("ok " + emulator + " (keyboard " + keyboardId() + ", mouse " + mouseId() + ") +hk +p" + SenderStatus.PROTO); continue; }   // +hk: knows "hk"; +pN: this protocol (the app restarts an older sender)   // which emulator, and the device ids keys/clicks use
                 String[] p = line.split(" ");
                 if (p[0].equals("rj") && p.length == 2) { out.println(rejoin(p[1]) ? "ok" : "bad link"); continue; }
                 if (p[0].equals("hk") && p.length == 3) { out.println(hidKey(Integer.parseInt(p[1]), Long.parseLong(p[2])) ? "ok" : "no hid"); continue; }   // "hk CODE MS": number key on the virtual keyboard

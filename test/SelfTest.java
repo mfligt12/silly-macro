@@ -754,6 +754,15 @@ public class SelfTest {
         // ---- Profile round trip
         File dir = Files.createTempDirectory("bm").toFile();
         Profile p = Profile.load(dir);
+        { // key sender status: an older sender (no "+pN") must read as older than this app, so Start restarts it
+          int[] pr = {0};
+          String e2 = com.iipxp.beemacro.SenderStatus.parse("ok hid tool (keyboard 12, mouse 12) +hk +p2", pr); int p2 = pr[0];
+          String e1 = com.iipxp.beemacro.SenderStatus.parse("ok uhid (keyboard 22, mouse 0) +hk", pr); int p1 = pr[0];
+          String e0 = com.iipxp.beemacro.SenderStatus.parse("ok hid tool (keyboard 12, mouse 12)", pr); int p0 = pr[0];
+          String en = com.iipxp.beemacro.SenderStatus.parse("denied", pr); int pn = pr[0];
+          check(p2 == 2 && "hid tool (keyboard 12, mouse 12)".equals(e2) && p1 == 1 && "uhid (keyboard 22, mouse 0)".equals(e1)
+                  && p0 == 0 && "hid tool (keyboard 12, mouse 12)".equals(e0) && en == null && pn == 0 && com.iipxp.beemacro.SenderStatus.PROTO > 1,
+                  "key sender status: protocol read (2 / old +hk = 1 / none = 0), emulator text kept, older senders get restarted"); }
         check(Profile.file(dir).exists() && p.backpackThreshold == 90 && p.hiveSlot == 3, "profile created with defaults");
         { // "Send report to the developer": only the Honey/Pollen band leaves the phone, the log is redacted and capped
           boolean ok = true; StringBuilder why = new StringBuilder();

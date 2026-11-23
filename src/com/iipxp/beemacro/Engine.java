@@ -77,6 +77,20 @@ final class Engine implements Runnable {
             for (int i = 0; i < 30 && "starting".equals(emu); i++) { SystemClock.sleep(500); emu = Keys.emulatorState(); }   // just started: give it the time to create the keyboard
             if ("starting".equals(emu)) return "The key sender is still creating its keyboard + mouse. Wait a few seconds and press Start again.";
             if (emu != null && emu.startsWith("none")) return "Keyboard mode: the key sender runs, but this device has no emulated keyboard/mouse (" + emu + "). Roblox ignores keys without one: plug in a USB/Bluetooth keyboard and mouse.";
+            // A key sender from an older Silly Macro keeps running after an update and sends the sprinkler key the old
+            // way, which Roblox ignores on phones (sprinkler never placed). Restart it from this version.
+            if (Keys.senderProto < SenderStatus.PROTO) {
+                Log.add("preflight: the key sender is from an older Silly Macro (protocol " + Keys.senderProto + ", this app " + SenderStatus.PROTO + "): restarting it");
+                if (!ShizukuKeys.ready()) return "Your key sender is from an older Silly Macro, so the sprinkler key won't work. Open Shizuku and press Start, then Home → step 2, then press Start again.";
+                MacroService.startWhy = "Updating the key sender…"; MacroService.startWhyAt = SystemClock.uptimeMillis();
+                String m = ShizukuKeys.start(s);
+                Log.add("preflight: key sender restart: " + m);
+                if (!Keys.connect(s)) return "The key sender didn't come back after the update (" + m + "). Home → step 2, then press Start again.";
+                emu = Keys.emulatorState();
+                for (int i = 0; i < 30 && "starting".equals(emu); i++) { SystemClock.sleep(500); emu = Keys.emulatorState(); }
+                if (Keys.senderProto < SenderStatus.PROTO) return "The key sender is still the old one after restarting it. Restart Shizuku, then Home → step 2, then press Start.";
+                if (emu == null || emu.startsWith("none") || "starting".equals(emu)) return "The new key sender has no keyboard + mouse yet (" + emu + "). Wait a few seconds and press Start again.";
+            }
         } else if (!s.tap(p.idleX, p.idleY)) return "Input test failed: accessibility gestures were not accepted.";
         return null;
     }
@@ -402,7 +416,11 @@ final class Engine implements Runnable {
         if (before != null && after != null && ro != null && before.length == after.length) {
             int w = ro.w, h = ro.h, py = Math.round(p.playerY * h), half = (int) (0.54 * h);   // ±0.54 x height around the centre = the tablet's box, any shape
             sprinkler = SprinklerFinder.learn(before, after, w, h, Math.max(0, w / 2 - half), (int) (0.18 * h), Math.min(w, w / 2 + half), Math.max((int) (0.3 * h), py - 20));
-            if (sprinkler != null && (sprinkler.learnedW > 0.3 * h || sprinkler.learnedH > 0.3 * h)) {   // live: 445×423 px under the tree = leaves that moved, not a sprinkler
+            // live: 445×423 px under the tree = leaves that moved, not a sprinkler (0.41 x 0.39 of the height). The big
+            // sprinklers are big too: a Supreme placed on the S23 showed up as 339×309 (0.31) and was thrown away
+            // (2026-11-23, confirmed in the game), so they get a little more room, still well under the leaves
+            double maxSize = "Golden Diamond Supreme".contains(p.sprinklerType) ? 0.36 : 0.3;
+            if (sprinkler != null && (sprinkler.learnedW > maxSize * h || sprinkler.learnedH > maxSize * h)) {
                 Log.add("sprinkler: the change ahead was " + sprinkler.learnedW + "×" + sprinkler.learnedH + " px, far too big for a sprinkler (leaves moving?) - not used");
                 sprinkler = null;
             }

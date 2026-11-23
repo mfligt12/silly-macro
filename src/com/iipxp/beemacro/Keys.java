@@ -80,9 +80,10 @@ final class Keys {
         if (out == null) return null;
         try {
             out.println("st"); String r = in.readLine();
-            hkKnown = r != null && r.endsWith(" +hk");
-            if (hkKnown) r = r.substring(0, r.length() - 4);
-            emulator = r != null && r.startsWith("ok ") ? r.substring(3) : null;
+            int[] proto = {0};
+            String rest = SenderStatus.parse(r, proto);
+            hkKnown = proto[0] >= 1; senderProto = proto[0];
+            emulator = rest;
         }
         catch (Exception e) { close(); emulator = null; }
         return emulator;
@@ -110,6 +111,8 @@ final class Keys {
         catch (Exception e) { close(); return false; }
     }
     static volatile boolean hkKnown;
+    /** The running key sender's protocol (SenderStatus.PROTO): 0 = older than "+hk", 1 = "+hk" only, 2+ = says its number. */
+    static volatile int senderProto;
     /** Drop the connection: the server releases every held key. Safe from any thread. */
     static void releaseAll() { Socket s = sock; try { if (s != null) s.close(); } catch (Exception ignored) { } }
 }
