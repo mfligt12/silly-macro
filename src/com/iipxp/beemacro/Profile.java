@@ -22,6 +22,10 @@ public final class Profile {
     public boolean hiveConfirmed = false;
     /** If the chosen hive is someone else's, claim the nearest free one instead (for this run; your slot stays saved). */
     public boolean autoHiveSlot = true;
+    /** No-HUD mode (convert on a timer) even when the Honey/Pollen counters could be read. Off = only when they can't. */
+    public boolean noHudForced = false;
+    /** No-HUD mode: how long to stand at the hive converting after pressing E (no bag reading to tell when it's done). */
+    public int noHudConvertSec = 150;
     /** Slots to try after `first`: 3 (straight ahead of spawn, the most tested) then the ones closest to it. */
     public static int[] slotOrder(int first) {
         int[] all = {3, 2, 4, 1, 5, 6}, o = new int[6]; o[0] = first; int n = 1;

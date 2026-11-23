@@ -516,6 +516,25 @@ public class SelfTest {
               check(ph != null && Math.abs(ph.k - 1.01) < 0.02 && r.screen == Vision.Screen.GAME && Math.round(r.pollen) == 0,
                     "mic icon over Honey, HUD at 101%: " + (ph == null ? "HUD not found" : ph + " " + r.screen + " bag " + Math.round(r.pollen)));
           } }
+        { // no-HUD mode: the counter reader never blocks Start; portrait, black screens and menus still do
+          boolean ok = true; StringBuilder why = new StringBuilder();
+          java.util.function.BiFunction<String, Boolean, Vision.Result> read = (f, phone) -> {
+              try { BufferedImage im = ImageIO.read(new File("test/fixtures/" + f)); int w = im.getWidth(), h = im.getHeight(); int[] q = im.getRGB(0, 0, w, h, null, 0, w);
+                    if (phone) Remap.phoneCal = Remap.locatePhone(q, w, h);
+                    Vision.Result r = phone ? Vision.analyze(Remap.apply(q, w, h)) : Vision.analyze(q, w, h); Remap.phoneCal = null; return r; }
+              catch (Exception e) { return null; } };
+          Vision.Result game = read.apply("s23_newhud_beam.png", true), raw = read.apply("vc_169_phonehud.png", false), menu = read.apply("s23_newmenu_people.png", false);
+          if (game != null) { ok &= Vision.startMode(false, game, 0.6, true) == Vision.Mode.HUD && Vision.startMode(true, game, 0.6, true) == Vision.Mode.NO_HUD; if (!ok) why.append(" game"); }
+          if (raw != null) {   // the 16:9 frame read with no measurement: counters unread, the game is there
+              boolean nh1 = raw.screen == Vision.Screen.UNKNOWN && Vision.startMode(false, raw, 0.6, true) == Vision.Mode.NO_HUD
+                      && Vision.playable(raw, true) && !Vision.playable(raw, false) && Vision.startMode(false, raw, 0.6, false) == Vision.Mode.BLOCKED;
+              ok &= nh1; if (!nh1) why.append(" unread=" + raw.screen);
+          }
+          if (menu != null) { boolean nh2 = menu.screen == Vision.Screen.MENU && Vision.startMode(true, menu, 0.6, true) == Vision.Mode.BLOCKED && !Vision.playable(menu, true); ok &= nh2; if (!nh2) why.append(" menu=" + menu.screen); }
+          Vision.Result dark = new Vision.Result(); dark.screen = Vision.Screen.DARK; dark.w = 2340; dark.h = 1080;
+          Vision.Result dim = new Vision.Result(); dim.w = 2340; dim.h = 1080; dim.meanLum = 5;   // UNKNOWN but black: not playable
+          ok &= Vision.startMode(true, dark, 0.6, true) == Vision.Mode.BLOCKED && !Vision.playable(dim, true) && Vision.startMode(false, null, 0.6, true) == Vision.Mode.BLOCKED;
+          check(ok, "no-HUD mode: HUD read = full mode, unread counters = no-HUD (or forced), portrait/menu/black screen still blocked" + why); }
         { // Cight, #help 2026-11-23: a 1921x1085 (16:9) screen where Roblox draws the PHONE HUD; the tablet reader never
           // measured it ("waiting for the honey counter"). It must switch to the phone reader, and real tablets must not.
           File ff = new File("test/fixtures/vc_169_phonehud.png");

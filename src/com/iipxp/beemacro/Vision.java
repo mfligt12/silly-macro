@@ -76,6 +76,22 @@ public final class Vision {
     }
 
     public static Result analyze(int[] px, int w, int h) { return analyze(px, w, h, false); }
+
+    // ---- no-HUD mode: the Honey/Pollen reader is optional (screens it can't read must not block the macro)
+    /** In the game for the macro: the HUD was read, or (no-HUD mode) a lit landscape frame that isn't a menu, dialog or
+     *  black screen. Menus, the respawn dialog and DARK are found without the counters, so those checks stay. */
+    public static boolean playable(Result r, boolean noHud) {
+        return r != null && (r.screen == Screen.GAME || (noHud && r.screen == Screen.UNKNOWN && r.w > r.h && r.meanLum >= 18));
+    }
+    public enum Mode { HUD, NO_HUD, BLOCKED }
+    /** How Start begins: with the HUD when it's read, in no-HUD mode when it isn't (or when forced), never for portrait,
+     *  a black screen or an open menu (those have their own fixes). */
+    public static Mode startMode(boolean forced, Result r, double minConf, boolean landscape) {
+        if (!landscape || r == null) return Mode.BLOCKED;
+        if (r.screen == Screen.DARK || r.screen == Screen.MENU || r.screen == Screen.RESPAWN_DIALOG) return Mode.BLOCKED;
+        if (forced) return Mode.NO_HUD;
+        return r.screen == Screen.GAME && r.screenConf >= minConf && r.pollenConf >= minConf ? Mode.HUD : Mode.NO_HUD;
+    }
     static Result analyze(int[] px, int w, int h, boolean tablet) {
         Result res = new Result(); res.w = w; res.h = h;
         if (w < h) { res.screen = Screen.UNKNOWN; res.screenConf = 0.9; return res; } // portrait: not Roblox gameplay

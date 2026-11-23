@@ -50,7 +50,7 @@ final class Engine implements Runnable {
                 || Moves.recorded("TO_FIELD").length == 0 || Moves.recorded("TO_HIVE").length == 0) return "Pattern/route data missing.";
         Vision.Result r = Monitor.fresh(SystemClock.uptimeMillis() - 1, 3000);
         if (r == null) return "No screen frames yet — is capture running?";
-        if (r.screen == Vision.Screen.UNKNOWN) {   // don't send people to a button: re-measure and wait for the HUD (up to 20 s)
+        if (r.screen == Vision.Screen.UNKNOWN && !p.noHudForced) {   // don't send people to a button: re-measure and wait for the HUD (up to 20 s)
             MacroService.startWhy = "Reading this screen's Bee Swarm HUD…"; MacroService.startWhyAt = SystemClock.uptimeMillis();
             Monitor.hurry();
             for (long until = SystemClock.uptimeMillis() + 20_000; r.screen == Vision.Screen.UNKNOWN && SystemClock.uptimeMillis() < until; ) {
@@ -59,17 +59,17 @@ final class Engine implements Runnable {
             }
             MacroService.startWhy = null;
         }
-        if (r.screen != Vision.Screen.GAME || r.screenConf < p.minConfidence) {
-            android.graphics.Point z = s.screen();
+        android.graphics.Point z = s.screen();
+        Vision.Mode mode = Vision.startMode(p.noHudForced, r, p.minConfidence, z.x > z.y);
+        if (mode == Vision.Mode.BLOCKED) {
             if (z.y > z.x) return "Turn the device sideways: Bee Swarm must be in landscape.";
             if (r.screen == Vision.Screen.DARK)
                 return "Screen capture only sees a black screen. Settings → stop screen capture, then Home → 2 · Allow screen capture and pick \"Entire screen\" (not \"A single app\").";
-            if (!Remap.tablet(z.x, z.y) && Remap.phoneCal == null)
-                return "Still measuring this phone's HUD (" + Monitor.calState + "). Stay in Bee Swarm with the Honey/Pollen counters showing for a few seconds, then press Start again.";
-            if (r.screen == Vision.Screen.MENU || r.screen == Vision.Screen.RESPAWN_DIALOG) return "The Roblox menu is open: close it, then press Start.";
-            return "Couldn't find Bee Swarm's Honey/Pollen counters at the top of the screen (" + Monitor.calState + "). Open Bee Swarm in landscape and press Start again. Settings → Your device shows what was measured.";
+            return "The Roblox menu is open: close it, then press Start.";
         }
-        if (r.pollenConf < p.minConfidence) return "Backpack bar not readable.";
+        // The counter reader is optional: a screen it can't read starts in no-HUD mode instead of refusing to start
+        startNoHud = mode == Vision.Mode.NO_HUD;
+        if (startNoHud) Log.add("preflight: " + (p.noHudForced ? "no-HUD mode is switched on" : "Honey/Pollen counters not read (" + Monitor.calState + ")") + " - starting in no-HUD mode");
         s.arm();
         if (p.keyboard()) {
             if (!Keys.connect(s) || !Keys.ping()) return "Keyboard mode: the key sender isn't running on this device (" + Keys.status + "). Start it with Shizuku in Silly Macro (or start_keys from a PC) and try again.";
@@ -113,6 +113,8 @@ final class Engine implements Runnable {
     @Override public void run() {
         worker = Thread.currentThread();
         final int userSlot = p.hiveSlot;   // an auto-picked free hive is for this run only
+        noHudNow = startNoHud;
+        if (noHudNow) noHudNote(p.noHudForced ? "switched on in Settings" : "the Honey/Pollen counters weren't read on this screen");
         Log.add("engine: start (" + Profile.PRESET + ", hive slot " + p.hiveSlot + ", threshold " + p.backpackThreshold + "%)");
         lastHourly = SystemClock.uptimeMillis();
         hook("session", "▶ Macro started", Routes.name(p.field) + " · " + p.pattern + "\nHive slot " + p.hiveSlot + " · bag limit " + p.backpackThreshold + "% · " + p.fieldMinutes + " min"
@@ -148,6 +150,7 @@ final class Engine implements Runnable {
         } finally {
             in.emergencyRelease();
             if (p.hiveSlot != userSlot) { p.hiveSlot = userSlot; App.save(in); }
+            noHudNow = false;
             stats.finish(reason.isEmpty() ? "stopped" : reason);
             Stats.save(in, stats);
             phase = "Stopped"; done = true;
@@ -844,7 +847,7 @@ final class Engine implements Runnable {
             }
         }
         if (stalledFull()) return;   // farmLoop walks home with it
-        if (now - farmStart > 60_000 && now - lastRise > 60_000) {
+        if (!noHudNow && now - farmStart > 60_000 && now - lastRise > 60_000) {   // no-HUD: nothing tells pollen is coming in
             saveGuardFrame("nopollen");
             throw new Recover("no pollen for 60 s while farming (stuck or not in a field): resetting to start over");
         }
@@ -1140,23 +1143,45 @@ final class Engine implements Runnable {
     // ------------------------------------------------------------------ vision helpers
     private long unexpectedSince;
     /** Pauses on menus / disconnect / loading that last too long. */
+    // ---- no-HUD mode: farm on timers when the Honey/Pollen counters can't be read (Monitor's world readers use it too)
+    static volatile boolean noHudNow; private static volatile boolean startNoHud;
+    private int hudBackFrames; private long hudFrameSeen;
+    private void noHudNote(String why) {
+        String m = "No-HUD mode: converting every " + p.fieldMinutes + " min (" + why + ")";
+        Log.add(m); decide("No-HUD mode", m, "Honey/Pollen counters not read", "farm " + p.fieldMinutes + " min, convert " + p.noHudConvertSec + " s", 0.7);
+        hook("problem", "🙈 No-HUD mode", m, Webhook.GOLD, false);
+    }
+    /** Counters readable again for 5 frames: back to full HUD mode (not when no-HUD mode is switched on by hand). */
+    private void hudModeCheck(Vision.Result r) {
+        if (!noHudNow || p.noHudForced || r == null || Monitor.lastTime == hudFrameSeen) return;
+        hudFrameSeen = Monitor.lastTime;
+        hudBackFrames = r.screen == Vision.Screen.GAME && r.screenConf >= p.minConfidence && r.pollenConf >= p.minConfidence ? hudBackFrames + 1 : 0;
+        if (hudBackFrames >= 5) { noHudNow = false; hudBackFrames = 0; Log.add("hud: Honey/Pollen counters readable again - back to full HUD mode"); decide("Farming", "The counters are readable again: bag-full and prompt checks are back on.", 1); }
+    }
     private Vision.Result watchScreen() {
         Vision.Result r = Monitor.last;
-        if (r == null || r.screen == Vision.Screen.GAME) { unexpectedSince = 0; return r; }
+        hudModeCheck(r);
+        if (r == null || Vision.playable(r, noHudNow)) { unexpectedSince = 0; return r; }
         if (unexpectedSince == 0) unexpectedSince = SystemClock.uptimeMillis();
         if (p.navGuard && p.keyboard() && (r.screen == Vision.Screen.MENU || r.screen == Vision.Screen.RESPAWN_DIALOG) && SystemClock.uptimeMillis() - unexpectedSince > 1000) {
             Log.add("guard: closing unexpected " + r.screen); in.key(Keys.ESC, 60); unexpectedSince = 0; sleep(700); return Monitor.last;
+        }
+        // the game is on screen, only the counters aren't read (30 s: a Bee Swarm window or the chat closes by itself
+        // before that): carry on in no-HUD mode instead of pausing or rejoining
+        if (r.screen == Vision.Screen.UNKNOWN && Vision.playable(r, true) && SystemClock.uptimeMillis() - unexpectedSince > 30_000) {
+            unexpectedSince = 0; noHudNow = true; hudBackFrames = 0; noHudNote("the counters stopped being readable"); return r;
         }
         if (night() && SystemClock.uptimeMillis() - unexpectedSince > p.rejoinAfterSec * 1000L) {
             unexpectedSince = 0; rejoinUntilBack("game screen gone for " + p.rejoinAfterSec + " s (" + r.screen + ")");
             throw new Recover("rejoined the server");
         }
         if (!night() && SystemClock.uptimeMillis() - unexpectedSince > (r.screen == Vision.Screen.DARK ? 10000 : 4000)) {
-            unexpectedSince = 0;
+            final long since = unexpectedSince; unexpectedSince = 0;
             // A Bee Swarm window, the chat or a notification over the counters is usually gone in a few seconds:
             // wait for the game to come back before pausing (Discord: "stops by itself", then "works again").
             String was = step; step = "Waiting for the Bee Swarm screen to come back (" + r.screen + ")";
-            Vision.Result back = waitFor(this::sure, 30_000);
+            Vision.Result back = waitFor(x -> sure(x) || (x.screen == Vision.Screen.UNKNOWN && Vision.playable(x, true) && SystemClock.uptimeMillis() - since > 30_000), 30_000);
+            if (back != null && !sure(back)) { noHudNow = true; hudBackFrames = 0; noHudNote("the counters stopped being readable"); step = was; return back; }
             step = was;
             if (back != null) { Log.add("screen: game back after " + r.screen + ", carrying on"); return back; }
             pause("Unexpected screen: " + r.screen + " — Roblox menu, loading or disconnected?");
@@ -1175,7 +1200,7 @@ final class Engine implements Runnable {
         }
         return null;
     }
-    private boolean sure(Vision.Result r) { return r.screen == Vision.Screen.GAME && r.screenConf >= p.minConfidence; }
+    private boolean sure(Vision.Result r) { return Vision.playable(r, noHudNow) && (r.screen != Vision.Screen.GAME || r.screenConf >= p.minConfidence); }
     private boolean bagKnown(Vision.Result r) { return sure(r) && r.pollenConf >= p.minConfidence; }
     private boolean promptKnown(Vision.Result r) { return sure(r) && r.promptConf >= p.minConfidence; }
 
@@ -1327,6 +1352,7 @@ final class Engine implements Runnable {
     }
 
     private void convert() {
+        if (noHudNow && waitFor(x -> bagKnown(x) && promptKnown(x), 2000) == null) { convertTimed(); return; }
         Vision.Result r = waitFor(x -> bagKnown(x) && promptKnown(x), 4000);
         if (r == null) { pause("Can't read backpack/hive prompt at hive"); checkpoint(); throw new Recover("convert: unreadable"); }
         // the bag bar rounds a big bag down to 0%; the game's own "Make Honey" prompt means there is pollen to convert
@@ -1418,6 +1444,23 @@ final class Engine implements Runnable {
         stats.balloons++;
         Log.add("balloon: done in " + Stats.fmt(SystemClock.uptimeMillis() - t0));
         hook("convert", "🎈 Hive balloon converted", "In " + Stats.fmt(SystemClock.uptimeMillis() - t0) + (Monitor.honey > 0 ? "\nHoney: " + Stats.big(Monitor.honey) : ""), Webhook.GREEN, true);
+    }
+
+    /** No-HUD conversion: E on the pad, then stand there for the set time (nothing reads the bag). Bee Swarm stops
+     *  making honey by itself when the bag is empty, so waiting longer only costs time. */
+    private void convertTimed() {
+        resetBagWatch();
+        prompt();
+        stats.conversions++;
+        Log.add("convert: no-HUD, pressed E and converting for " + p.noHudConvertSec + " s");
+        hook("convert", "🍯 Converting (no-HUD)", "Hive slot " + p.hiveSlot + " · " + p.noHudConvertSec + " s", Webhook.CYAN, true);
+        long t0 = SystemClock.uptimeMillis();
+        while (SystemClock.uptimeMillis() - t0 < p.noHudConvertSec * 1000L) {
+            step = "Converting (no-HUD) · " + (p.noHudConvertSec - (SystemClock.uptimeMillis() - t0) / 1000) + " s left";
+            watchScreen(); sleep(1000);
+            if (!noHudNow) { Log.add("convert: counters readable again, checking the bag"); break; }
+        }
+        if (balloonDue()) convertBalloon();
     }
 
     /** The chosen farming pattern: Skillet, or a Natro Macro pattern read from assets/patterns (falls back to Skillet). */
@@ -1604,7 +1647,7 @@ final class Engine implements Runnable {
     }
     private void farmLoop(List<Moves.Step> sk) {
         Vision.Result r0 = waitFor(this::bagKnown, 4000);
-        if (r0 == null) { pause("Backpack unreadable on arrival"); checkpoint(); throw new Recover("unreadable"); }
+        if (r0 == null && !noHudNow) { pause("Backpack unreadable on arrival"); checkpoint(); throw new Recover("unreadable"); }
         // Make sure we landed in PINE TREE (blue/white flowers), not a neighbouring field, before farming.
         int[] seen = Routes.blueField(p.field) ? fieldFrames() : new int[]{6, 0};   // other fields: no colour check (the 60 s no-pollen reset still applies)
         // at the field's edge a hedge can block the view: look for the flowers before giving up
@@ -1620,7 +1663,7 @@ final class Engine implements Runnable {
         if (hidden) Log.add("field check: flowers hidden here (under the leaves); trusting the arrival check and the placed sprinkler");
         else if (pine < 3 || other > pine) throw new Recover(other > pine ? "landed in another field (red flowers), not Pine Tree" : "not standing in Pine Tree Forest");
         nav = Routes.name(p.field) + (Routes.blueField(p.field) ? " (flowers confirmed " + pine + "/6)" : "");
-        double startPct = r0.pollen;
+        double startPct = r0 == null ? 0 : r0.pollen;
         long t0 = SystemClock.uptimeMillis();
         if (Monitor.honey > 0) stats.honey(Monitor.honey);
         lastRise = t0; outsideSince = 0; farmStart = t0; lastPct = -1; patYaw = 0; haveLastIn = false; Monitor.fieldTrack.clear(); wrongSince = 0; wrongSeen = 0;

@@ -181,7 +181,8 @@ final class Monitor {
                     if (ro.tablet && tn - honeyRead > 2000) { honeyRead = tn; long hv = HoneyOcr.read(f.px, f.w, f.h); if (hv > 0) honeySeen(hv, tn); }
                     final int[] fpx0 = ro.px; final int fw0 = ro.w, fh0 = ro.h;
                     List<Detector.Det> dets = new ArrayList<>();
-                    boolean game = r.screen == Vision.Screen.GAME && r.screenConf >= p.minConfidence;
+                    boolean hud = r.screen == Vision.Screen.GAME && r.screenConf >= p.minConfidence;
+                    boolean game = hud || Vision.playable(r, Engine.noHudNow);   // no-HUD mode: the world readers still run
                     long now = SystemClock.uptimeMillis();
                     if (game) {
                         Detector.Library lib = App.library(c);
@@ -211,7 +212,7 @@ final class Monitor {
                             if (t != null) { d.label = t.d.label; d.cat = t.d.cat; d.conf = t.d.conf; d.guess = t.d.guess; d.guessScore = t.d.guessScore; d.tpl = t.d.tpl; }
                             return false;
                         });
-                        if (buffs != null) { buffs.minConf = p.buffMinConf; buffBoxes = buffs.update(fpx0, fw0, fh0, r, lib.buffs(), now, s -> Log.add("buffs: " + s)); }
+                        if (buffs != null && hud) { buffs.minConf = p.buffMinConf; buffBoxes = buffs.update(fpx0, fw0, fh0, r, lib.buffs(), now, s -> Log.add("buffs: " + s)); }
                         queueReview();
                         state = "analysing";
                     } else {

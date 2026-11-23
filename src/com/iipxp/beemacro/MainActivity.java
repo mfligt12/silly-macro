@@ -540,6 +540,9 @@ public class MainActivity extends Activity {
         hr.addView(button("Confirm slot", PURPLE, v -> { p.hiveConfirmed = true; App.save(this); Log.add("hive: slot " + p.hiveSlot + " confirmed by user"); refresh(); }), new LinearLayout.LayoutParams(0, dp(48), 2));
         hv.addView(hr);
         hv.addView(toggle("If this hive is taken, use the nearest free one (3 first)", p.autoHiveSlot, on -> p.autoHiveSlot = on));
+        // no-HUD mode (counters not read on this screen, or switched on in Settings): these two timers replace the bag reading
+        hv.addView(stepper("Time in the field before converting", () -> p.fieldMinutes + " min", d -> p.fieldMinutes = clamp(p.fieldMinutes + d, 1, 60)));
+        hv.addView(stepper("No-HUD mode: converting time at the hive", () -> p.noHudConvertSec + " s", d -> p.noHudConvertSec = clamp(p.noHudConvertSec + d * 15, 30, 900)));
         hv.addView(stepper("Your move speed (Bee Swarm stats)", () -> String.format(Locale.US, "%.2f", p.moveSpeed), x -> p.moveSpeed = Math.round((p.moveSpeed + x * 0.05) * 100) / 100.0));
         hv.addView(button("Type your move speed", 0, v -> {   // e.g. 29.9: the − / + steps can't land on every value
             android.widget.EditText et = new android.widget.EditText(this);
@@ -638,6 +641,8 @@ public class MainActivity extends Activity {
         dv.addView(tv("Silly Macro reads Bee Swarm's HUD the way this screen draws it: it finds the Honey and Pollen "
                 + "counters at the top and measures the scale, centre and camera-cutout inset by itself the first time you're in game.", 12, DIM));
         hudState = tv("", 13, Ui.CYAN); dv.addView(hudState);
+        dv.addView(toggle("No-HUD mode (convert on a timer)", p.noHudForced, on -> p.noHudForced = on));
+        dv.addView(tv("Off: used by itself only when the Honey/Pollen counters can't be read. On: always farms for the field time (Hive tab), then converts for the set time, without reading the bag.", 12, DIM));
         dv.addView(button("Re-measure HUD (after changing Roblox's UI or screen settings)", 0, v -> { Monitor.recalibrate(); toast("Open Bee Swarm in landscape for a few seconds"); }));
         String tips = brandTips(android.os.Build.MANUFACTURER);
         if (tips != null) {   // Redmi Note 13, Honor 90 in #whats-your-android: these systems stop background apps and keys
