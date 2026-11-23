@@ -725,7 +725,7 @@ public class MainActivity extends Activity {
             catch (Exception e) { startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)); }
         }));
         LinearLayout k = card("Key sender (keyboard + mouse)");
-        if (!shizukuInstalled()) k.addView(button("Install Shizuku (for the key sender without a PC)", 0, v -> getShizuku()));
+        if (!shizukuInstalled()) k.addView(button("Get Shizuku (for the key sender without a PC)", 0, v -> getShizuku()));
         k.addView(button("Start key sender on this device (Shizuku, no PC)", PURPLE, v -> {
             Toast.makeText(this, "Starting key sender…", Toast.LENGTH_SHORT).show();
             new Thread(() -> { String m = ShizukuKeys.start(this); Log.add("shizuku: " + m); runOnUiThread(() -> Toast.makeText(this, m, Toast.LENGTH_LONG).show()); }).start();
@@ -1089,16 +1089,17 @@ public class MainActivity extends Activity {
     int dp(float v) { return Math.round(v * getResources().getDisplayMetrics().density); }
     static final String SHIZUKU = "moe.shizuku.privileged.api";
     boolean shizukuInstalled() { try { getPackageManager().getPackageInfo(SHIZUKU, 0); return true; } catch (Exception e) { return false; } }
-    /** Install Shizuku here (download + signature check, Android confirms) or from the Play Store. */
+    /** Shizuku from the Play Store, or its official GitHub page in the browser. The in-app installer is gone: the
+     *  "install other apps" permission it needed, next to Accessibility and screen capture, is what Google Play
+     *  Protect blocks as "App blocked to protect your device" (Discord #help, 2026-11-23). */
     void getShizuku() {
         new android.app.AlertDialog.Builder(this).setTitle("Get Shizuku")
-                .setMessage("Install here: Silly Macro downloads the latest Shizuku from its official GitHub, checks it is really Shizuku "
-                        + "(signed by its developer), then Android asks you to confirm the install.\n\nOr get it from the Play Store.")
-                .setPositiveButton("Install here", (d, w) -> ShizukuInstall.start(this, m -> Toast.makeText(this, m, Toast.LENGTH_LONG).show()))
-                .setNeutralButton("Play Store", (d, w) -> {
+                .setMessage("Shizuku is free and open source. Get it from the Play Store, or from its official GitHub page (download the .apk under Assets).")
+                .setPositiveButton("Play Store", (d, w) -> {
                     try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + SHIZUKU))); }
-                    catch (Exception e) { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/RikkaApps/Shizuku/releases/latest"))); }
+                    catch (Exception e) { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + SHIZUKU))); }
                 })
+                .setNeutralButton("GitHub", (d, w) -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/RikkaApps/Shizuku/releases/latest"))))
                 .setNegativeButton("Cancel", null).show();
     }
 

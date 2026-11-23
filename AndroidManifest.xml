@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.iipxp.beemacro" android:versionCode="14" android:versionName="1.0.13">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.iipxp.beemacro" android:versionCode="15" android:versionName="1.0.14">
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- the local key sender on 127.0.0.1 (KeyServer), GitHub only when you tap "Install Shizuku", and your own Discord webhook if you set one -->
+    <!-- the local key sender on 127.0.0.1 (KeyServer), your account sign-in, and your own Discord webhook if you set one -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Shizuku: lets the app start its key sender as the shell user without a PC -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
-    <!-- installing Shizuku from inside the app (Android still asks you to confirm) -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <queries><package android:name="com.roblox.client" /><package android:name="moe.shizuku.privileged.api" /></queries>
     <application android:label="Silly Macro" android:icon="@drawable/ic_launcher" android:theme="@android:style/Theme.DeviceDefault.NoActionBar" android:allowBackup="false">
         <meta-data android:name="moe.shizuku.client.V3_SUPPORT" android:value="true" />

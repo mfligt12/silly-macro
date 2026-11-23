@@ -66,6 +66,9 @@ public final class Profile {
     public String sprinklerLoc = "Upper Left";
     public int sprinklerDist = 7, fieldRotate = 4;
     public int sprinklerSlot = 1;
+    /** Zoom-in steps from fully out to the best hive view when standing on our pad, learned on this device (0 = not yet).
+     *  The central spawn is 2+ steps further; phones and tablets differ (tablet pad 1 / spawn 3, S23 pad ~5). */
+    public int padZoomStep = 0;
     public String sprinklerType = "Basic";   // Natro's types: how many to place (Basic 1, Silver 2, Golden 3, Diamond 4, Supreme 1)
     public static final String[] SPRINKLERS = {"Basic", "Silver", "Golden", "Diamond", "Supreme", "None"};
     public int sprinklerCount() { switch (sprinklerType) { case "Silver": return 2; case "Golden": return 3; case "Diamond": return 4; case "None": return 0; default: return 1; } }

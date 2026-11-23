@@ -8,7 +8,7 @@ package com.iipxp.beemacro;
 public final class Vision {
     /** TAP_BLUE = "Make Honey" (or another blue action), TAP_CLAIM = "Claim Hive", TAP_CANNON = "Fire the Red Cannon",
      *  TAP_RED = "Stop Making Honey", BANNER_BLUE = "To Make Honey, Collect Pollen…" (own hive, empty bag). */
-    public enum Prompt { NONE, TAP_BLUE, TAP_CLAIM, TAP_CANNON, TAP_RED, BANNER_BLUE }
+    public enum Prompt { NONE, TAP_BLUE, TAP_CLAIM, TAP_CANNON, TAP_RED, BANNER_BLUE, TAP_OTHER }   // TAP_OTHER: a two-line blue prompt (planters: "Harvest the Tacky Planter"), never ours
     public enum Screen { GAME, MENU, RESPAWN_DIALOG, DARK, UNKNOWN }
 
     public static final class Result {
@@ -33,7 +33,11 @@ public final class Vision {
 
     // Measured geometry (fractions of a 2340x1080 landscape frame)
     static final double BAR_X0 = 1280 / 2340.0, BAR_X1 = 1694 / 2340.0, BAR_Y_LOW = 119 / 1080.0, BAR_Y_HIGH = 76 / 1080.0;
-    static final double PILL_R_X = 1708 / 2340.0, PILL_L_X = 615 / 2340.0;
+    // White pill margins sampled for "HUD showing": the Pollen pill's outer end (must show: a panel over it hides the
+    // bar), and for the Honey pill the better of its outer end (615) and its inner end at the centre (1145, white on
+    // every row). Roblox's top-left buttons cover the outer end when voice chat is on (every frame read UNKNOWN, user
+    // screenshots 2026-11-22); over the yellow hive the inner end reads too yellow (48-70%), the outer end doesn't.
+    static final double PILL_R_X = 1708 / 2340.0, PILL_L_X = 615 / 2340.0, PILL_LI_X = 1145 / 2340.0;
     static final double TAP_X0 = 848 / 2340.0, TAP_X1 = 955 / 2340.0, TAP_Y0 = 192 / 1080.0, TAP_Y1 = 290 / 1080.0;
     static final double BOX_X0 = 985 / 2340.0, BOX_X1 = 1490 / 2340.0, BOX_Y0 = 191 / 1080.0, BOX_Y1 = 288 / 1080.0;
     static final double BANNER_X0 = 850 / 2340.0, BANNER_X1 = 960 / 2340.0;
@@ -113,13 +117,16 @@ public final class Vision {
 
     /** HUD present = the light ends of the "Honey" and "Pollen" pills (no text there) at their measured spots. */
     static double hudConfidence(int[] px, int w, int h) {
+        double right = pillWhite(px, w, h, PILL_R_X), left = Math.max(pillWhite(px, w, h, PILL_L_X), pillWhite(px, w, h, PILL_LI_X));
+        return (left + right) / 2;
+    }
+    /** Share of a pill margin column (rows 80-120, ±3 px: inside the 26 px inner margin) that is the pill's white. */
+    static double pillWhite(int[] px, int w, int h, double fx) {
         int ok = 0, n = 0;
-        for (double fx : new double[]{PILL_R_X, PILL_L_X}) for (int y = 80; y <= 120; y += 4) {
-            for (int dx = -3; dx <= 3; dx += 3) {
-                int p = at(px, w, h, fx, y / 1080.0, dx, 0);
-                // translucent white pill: ~(218,216,206) over dark scenes, up to ~(246,239,213) over the bright hive wall
-                n++; if (Math.min(r(p), Math.min(g(p), b(p))) > 185 && sat(p) < 45) ok++;
-            }
+        for (int y = 80; y <= 120; y += 4) for (int dx = -3; dx <= 3; dx += 3) {
+            int p = at(px, w, h, fx, y / 1080.0, dx, 0);
+            // translucent white pill: ~(218,216,206) over dark scenes, up to ~(246,239,213) over the bright hive wall
+            n++; if (Math.min(r(p), Math.min(g(p), b(p))) > 185 && sat(p) < 45) ok++;
         }
         return ok / (double) n;
     }
@@ -158,7 +165,10 @@ public final class Vision {
             int x0 = textLeft(px, w, h);
             // text width separates the rest (measured: Make Honey 369 cols, Fire the Red Cannon 329, Claim Hive 297)
             int cols = textCols(px, w, h);
-            res.prompt = x0 >= 0 && x0 >= (int) (1013 / 2340.0 * w) ? Prompt.TAP_CLAIM
+            // Two lines of text is none of those: a planter ("Harvest the Tacky Planter", user screenshot) starts right
+            // of 1013 too and was read as Claim Hive, and as our own hive's Make Honey it would end a farming trip
+            res.prompt = textLines(px, w, h) >= 2 ? Prompt.TAP_OTHER
+                    : x0 >= 0 && x0 >= (int) (1013 / 2340.0 * w) ? Prompt.TAP_CLAIM
                     : cols > 0 && cols < (int) (349 / 2340.0 * w) ? Prompt.TAP_CANNON : Prompt.TAP_BLUE;
             res.promptConf = Math.min(1, (tap + blue) / 1.6) * (x0 < 0 ? 0.5 : 1);
         }
@@ -442,6 +452,21 @@ public final class Vision {
             if (n >= 3) cols++;
         }
         return cols;
+    }
+
+    /** Lines of white text in the prompt box: bands of ≥12 rows (y 190-290) with text, split by ≥6 empty rows.
+     *  Measured: Claim Hive / Make Honey / Cannon one band (204-271, 205-, 220-259), a planter two (197-239, 253-283).
+     *  From x 985: the white "Tap" key square ends just left of it. */
+    static int textLines(int[] px, int w, int h) {
+        int y0 = (int) (190 / 1080.0 * h), y1 = (int) (290 / 1080.0 * h), minRun = Math.max(4, (int) (12 / 1080.0 * h)), minGap = Math.max(2, (int) (6 / 1080.0 * h));
+        int lines = 0, start = -1, lastText = -1000;
+        for (int y = y0; y <= y1 + 1; y++) {
+            boolean text = false;
+            if (y <= y1) { int n = 0; for (int x = (int) (985 / 2340.0 * w); x <= (int) (1495 / 2340.0 * w) && n < 2; x++) { int p = px[y * w + x]; if (r(p) > 230 && g(p) > 230 && b(p) > 230) n++; } text = n >= 2; }
+            if (text) { if (start < 0 || y - lastText > minGap) { if (start >= 0 && lastText - start + 1 >= minRun) lines++; start = y; } lastText = y; }
+        }
+        if (start >= 0 && lastText - start + 1 >= minRun) lines++;
+        return lines;
     }
 
     /** First column (from the box's left) holding ≥3 white text pixels, or -1. */

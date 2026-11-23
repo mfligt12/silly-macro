@@ -70,7 +70,8 @@ public final class Remap {
         @Override public String toString() { return String.format(java.util.Locale.US, "scale %.0f%%, centre %.0f, top %.0f, inset %.0f", k * 100, cx, top, inset); }
     }
     static final double S23_SPAN = 1112, S23_CX = 1164, S23_TOP = 66, S23_PILL_W = 550, S23_MENU_X0 = 182, S23_MENU_CY = 102, S23_MENU_W = 62;
-    /** This phone's measured layout (null until measured; see Monitor). */
+    // the number boxes on the S23 (locateBoxes on every S23 fixture): Honey 718-1132, Pollen 1280-1695, top 72
+    static final double S23_HBOX_X1 = 1132, S23_BOX_RR = 1695 - 1132, S23_BOX_TOP = 72;    /** This phone's measured layout (null until measured; see Monitor). */
     public static volatile Phone phoneCal;
 
     /** Bee Swarm's counters are on screen somewhere (any layout): the pills, or on tablets a readable honey counter. */
@@ -158,17 +159,31 @@ public final class Remap {
             double score = wa + wb;
             if (score > best) { best = score; bl = a; br = b; }
         }
-        if (bl == null) return null;
-        // exact edges at full resolution (a 2 px grid left the buff row 2-3 px off: Haste in slot 24 was missed)
-        int ry0 = bl[2] + (bl[3] - bl[2]) / 4, ry1 = bl[3] - (bl[3] - bl[2]) / 4;
-        double lx0 = edge(px, w, h, bl[0], ry0, ry1, +1, s), lx1 = edge(px, w, h, bl[1] - 1, ry0, ry1, -1, s);
-        double rx0 = edge(px, w, h, br[0], ry0, ry1, +1, s), rx1 = edge(px, w, h, br[1] - 1, ry0, ry1, -1, s);
-        // scale from the two pills' outer span (1,112 px on the S23): a few px of edge error is ~0.3%, not the 1-2% of
-        // one pill's width - which mattered: 1% moves buff slot 24 (Haste) by 15 px
-        double k = (rx1 - lx0) / S23_SPAN, cx = (lx1 + rx0) / 2.0, top = topEdge(px, w, h, (int) ((lx0 + lx1) / 2), bl[2], s);
-        // bright scenery touching one pill makes it look wider (never narrower): if the two disagree, trust the narrower
-        double kl = (lx1 - lx0) / S23_PILL_W, kr = (rx1 - rx0) / S23_PILL_W;
-        if (Math.abs(kl - kr) > 0.02 * Math.min(kl, kr)) k = Math.min(kl, kr);
+        double k = 0, cx = 0, top = 0; boolean sure = false;
+        if (bl != null) {
+            // exact edges at full resolution (a 2 px grid left the buff row 2-3 px off: Haste in slot 24 was missed)
+            int ry0 = bl[2] + (bl[3] - bl[2]) / 4, ry1 = bl[3] - (bl[3] - bl[2]) / 4;
+            double lx0 = edge(px, w, h, bl[0], ry0, ry1, +1, s), lx1 = edge(px, w, h, bl[1] - 1, ry0, ry1, -1, s);
+            double rx0 = edge(px, w, h, br[0], ry0, ry1, +1, s), rx1 = edge(px, w, h, br[1] - 1, ry0, ry1, -1, s);
+            // scale from the two pills' outer span (1,112 px on the S23): a few px of edge error is ~0.3%, not the 1-2% of
+            // one pill's width - which mattered: 1% moves buff slot 24 (Haste) by 15 px
+            k = (rx1 - lx0) / S23_SPAN; cx = (lx1 + rx0) / 2.0; top = topEdge(px, w, h, (int) ((lx0 + lx1) / 2), bl[2], s);
+            // If the two pills' widths disagree, one is wrong: bright scenery touching a pill makes it look wider, and
+            // Roblox's top-left buttons cover the Honey pill's left end when the voice-chat mic is on, which makes it look
+            // narrower (user screenshots 2026-11-22: 89% measured, 93.6% real, HUD never found). The number boxes below
+            // settle it; without them: only those buttons narrow a pill, only the Honey one, and they are dark.
+            double kl = (lx1 - lx0) / S23_PILL_W, kr = (rx1 - rx0) / S23_PILL_W;
+            sure = Math.abs(kl - kr) <= 0.02 * Math.min(kl, kr);
+            if (!sure) k = kl < kr && coveredLeft(px, w, h, (int) lx0, ry0, ry1) ? kr : Math.min(kl, kr);
+        }
+        if (!sure) {
+            // The number boxes: found where the pills' thin white frame melts into a bright background (in front of the
+            // hive) and never covered on their right edges. Scale from the two right edges (563 px apart on the S23: the
+            // Pollen box's left edge moves with the pollen bar, the Honey box's left can be under Roblox's buttons).
+            double[] b = locateBoxes(px, w, h);
+            if (b != null) { k = (b[3] - b[1]) / S23_BOX_RR; cx = b[1] + (S23_CX - S23_HBOX_X1) * k; top = b[4] - (S23_BOX_TOP - S23_TOP) * k; }
+            else if (bl == null) return null;
+        }
         // Left inset (camera cutout) from Roblox's top-left buttons: the white menu "≡" (62 px on the S23, x 182) and the
         // next white icon 300 px to its right. The pair pins it; a single lookalike blob doesn't (live test: 30-80 px off).
         java.util.List<int[]> btn = new java.util.ArrayList<>();
@@ -204,6 +219,76 @@ public final class Remap {
         }
         return dir > 0 ? x : x + 1;
     }
+    static boolean boxGrey(int p) { int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255, mx = Math.max(r, Math.max(g, b)); return mx >= 80 && mx <= 150 && mx - Math.min(r, Math.min(g, b)) < 30; }
+
+    /** The counters' two dark-grey number boxes, side by side at the top centre: {honey x0, honey x1, pollen x0, pollen x1,
+     *  top} in screen px (x1 exclusive), or null. They stay readable where the pills' thin white frame melts into a
+     *  bright background (in front of the hive, user screenshots 2026-11-22), so they back up the pill search. */
+    static double[] locateBoxes(int[] px, int w, int h) {
+        int s = Math.max(2, h / 540), gw = w / s, gh = (int) (h * 0.22) / s;
+        boolean[] m = new boolean[gw * gh];
+        for (int y = 0; y < gh; y++) for (int x = 0; x < gw; x++) m[y * gw + x] = boxGrey(px[(y * s) * w + x * s]);
+        java.util.List<int[]> boxes = new java.util.ArrayList<>();
+        int[] q = new int[gw * gh]; boolean[] seen = new boolean[gw * gh]; int[] rowN = new int[gh];
+        for (int i = 0; i < m.length; i++) {
+            if (!m[i] || seen[i]) continue;
+            int qa = 0, qb = 0, x0 = gw, x1 = 0, y0 = gh, y1 = 0;
+            q[qb++] = i; seen[i] = true;
+            while (qa < qb) {
+                int c = q[qa++], cx = c % gw, cy = c / gw; rowN[cy]++;
+                x0 = Math.min(x0, cx); x1 = Math.max(x1, cx); y0 = Math.min(y0, cy); y1 = Math.max(y1, cy);
+                if (cx > 0 && m[c - 1] && !seen[c - 1]) { seen[c - 1] = true; q[qb++] = c - 1; }
+                if (cx < gw - 1 && m[c + 1] && !seen[c + 1]) { seen[c + 1] = true; q[qb++] = c + 1; }
+                if (cy > 0 && m[c - gw] && !seen[c - gw]) { seen[c - gw] = true; q[qb++] = c - gw; }
+                if (cy < gh - 1 && m[c + gw] && !seen[c + gw]) { seen[c + gw] = true; q[qb++] = c + gw; }
+            }
+            // the box's own rows are mostly grey (digits leave gaps); grey scenery glued to it isn't
+            int top = -1, bot = -1;
+            for (int y = y0; y <= y1; y++) { if (rowN[y] >= 0.7 * (x1 - x0 + 1)) { if (top < 0) top = y; bot = y; } rowN[y] = 0; }
+            if (top < 0) continue;
+            double bw = (x1 - x0 + 1) * s, bh = (bot - top + 1) * s;
+            if (bw >= 0.1 * w && bw / bh > 5 && bw / bh < 14) boxes.add(new int[]{x0 * s, (x1 + 1) * s, top * s, (bot + 1) * s});
+        }
+        int[] hb = null, pb = null; double best = 0;
+        for (int[] a : boxes) for (int[] b : boxes) {
+            if (a == b || a[0] >= b[0]) continue;
+            double wa = a[1] - a[0], wb = b[1] - b[0], gap = b[0] - a[1];
+            if (Math.abs(wa - wb) > 0.08 * Math.max(wa, wb) || Math.abs(a[2] - b[2]) > 0.02 * h) continue;
+            if (gap < 0.2 * wa || gap > 0.6 * wa) continue;                       // S23: 149 px between 414 px boxes
+            if (Math.abs((a[1] + b[0]) / 2.0 - w / 2.0) > 0.2 * w || a[2] > 0.2 * h) continue;
+            if (wa + wb > best) { best = wa + wb; hb = a; pb = b; }
+        }
+        if (hb == null) return null;
+        // exact edges on the box's upper rows (no digits there), at full resolution
+        int ey0 = hb[2] + s, ey1 = hb[2] + Math.max(s + 1, (hb[3] - hb[2]) / 4);
+        double hx0 = greyEdge(px, w, h, hb[0], ey0, ey1, +1, s), hx1 = greyEdge(px, w, h, hb[1] - 1, ey0, ey1, -1, s);
+        double px0 = greyEdge(px, w, h, pb[0], ey0, ey1, +1, s), px1 = greyEdge(px, w, h, pb[1] - 1, ey0, ey1, -1, s);
+        int mid = (int) ((px0 + px1) / 2), top = pb[2];
+        for (int y = Math.max(0, pb[2] - s - 1); y <= pb[2] + s + 1; y++) if (boxGrey(px[y * w + mid])) { top = y; break; }
+        return new double[]{hx0, hx1, px0, px1, top};
+    }
+    /** Like edge(), for the grey box: the outermost column within one coarse cell where half of rows y0..y1 are grey. */
+    static double greyEdge(int[] px, int w, int h, int x, int y0, int y1, int dir, int s) {
+        for (int i = -s - 1; i <= s + 1; i++) {
+            int xx = x + dir * i; if (xx < 0 || xx >= w) continue;
+            int n = 0, all = 0; for (int y = Math.max(0, y0); y <= Math.min(h - 1, y1); y++) { all++; if (boxGrey(px[y * w + xx])) n++; }
+            if (n * 2 >= all) return dir > 0 ? xx : xx + 1;
+        }
+        return dir > 0 ? x : x + 1;
+    }
+
+    /** The Honey pill's left end is under Roblox's top-left buttons: the 24 px left of it, on the pill's middle rows, are
+     *  mostly that bar's dark grey (max channel under 90, little colour). Scenery there would leave the white end visible. */
+    static boolean coveredLeft(int[] px, int w, int h, int x0, int y0, int y1) {
+        int dark = 0, n = 0;
+        for (int y = Math.max(0, y0); y <= Math.min(h - 1, y1); y += 2) for (int x = Math.max(0, x0 - 24); x < x0 - 2; x += 2) {
+            int p = px[y * w + x], r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            int mx = Math.max(r, Math.max(g, b)), mn = Math.min(r, Math.min(g, b));
+            n++; if (mx < 90 && mx - mn < 40) dark++;
+        }
+        return n > 0 && dark >= 0.8 * n;
+    }
+
     /** The exact top of the pill at column x (first white row near the coarse top). */
     static double topEdge(int[] px, int w, int h, int x, int y, int s) {
         for (int yy = Math.max(0, y - s - 1); yy <= y + s + 1 && yy < h; yy++) if (white(px[yy * w + x])) return yy;

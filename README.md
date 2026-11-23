@@ -59,7 +59,7 @@ Reporting a bug: Settings → Debug → **Share log**, and paste it with a scree
 - **Presses keys and moves the mouse** through a virtual keyboard and mouse (Android's `hid` tool or Linux uhid), the same way a Bluetooth keyboard would. It runs as the `shell` user, started either by [Shizuku](https://github.com/RikkaApps/Shizuku) or by `start_keys.ps1` over adb. It listens only on `127.0.0.1` and needs a per-install token.
 - **Does not** inject code into Roblox, modify Roblox files, root the device, or get around Android or Roblox security.
 - **Does not** buy anything or spend in-game currency.
-- **Network use:** your Discord webhook (if you set one), and GitHub only when you tap "Install Shizuku". Nothing else.
+- **Network use:** your Discord webhook (if you set one) and your Silly Macro account sign-in. Nothing else. The app never installs other apps.
 
 Using macros may be against Roblox's or the game's rules. Use it at your own risk.
 

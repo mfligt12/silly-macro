@@ -208,7 +208,7 @@ final class Engine implements Runnable {
             stats.rejoins++;
             long end = SystemClock.uptimeMillis() + 180_000; int good = 0;
             while (SystemClock.uptimeMillis() < end && good < 5) { sleep(1000); Vision.Result r = Monitor.last; good = r != null && sure(r) ? good + 1 : 0; }
-            if (good >= 5) { Log.add("rejoin: back in the game"); sleep(8000); firstKbTrip = false; return; }
+            if (good >= 5) { Log.add("rejoin: back in the game"); sleep(8000); firstKbTrip = false; ownsHive = false; return; }   // a new server: no hive until the claim
             Log.add("rejoin: game not back after 3 min"); sleep(Math.min(10, attempt) * 60_000L);
         }
     }
@@ -217,7 +217,7 @@ final class Engine implements Runnable {
      *  slot is taken, try the others from the central spawn. */
     private void ensureHive() {
         Vision.Result r = waitFor(x -> promptKnown(x), 3000);
-        if (r != null && ownHive(r)) return;
+        if (r != null && ownHive(r)) { if (r.prompt != Vision.Prompt.BANNER_BLUE) ownsHive = true; return; }
         if (r != null && r.prompt == Vision.Prompt.TAP_CLAIM) { claimHere(); return; }
         if (!night()) return;
         if (p.hiveConfirmed) { Log.add("hive: prompt not read at confirmed slot " + p.hiveSlot + ", keeping it"); return; }   // never overwrite the user's slot
@@ -235,7 +235,7 @@ final class Engine implements Runnable {
     }
     private void claimHere() {
         prompt(); sleep(2500);
-        stats.hiveClaims++; Log.add("hive: claimed slot " + p.hiveSlot);
+        stats.hiveClaims++; ownsHive = true; Log.add("hive: claimed slot " + p.hiveSlot);
         if (waitFor(x -> promptKnown(x) && ownHive(x), 8000) == null) Log.add("hive: claim not confirmed yet");
     }
 
@@ -286,8 +286,12 @@ final class Engine implements Runnable {
         sleep(800);
         // blue/white fields only: the flower check knows Pine Tree-like flowers
         arrivalOk = false;
-        if (p.navGuard && Routes.blueField(p.field) && !seekPine(10_000, "arrival")) throw new Recover("no " + fname + " flowers in sight after the walk");
-        arrivalOk = true;
+        if (p.navGuard && Routes.blueField(p.field) && !seekPine(10_000, "arrival")) {
+            // twice in a row from what we took for the pad: the learned pad zoom step may be wrong, learn it again
+            if (++arrivalFails >= 2 && p.padZoomStep > 0 && !ownsHive) { Log.add("camera: two walks found no field, forgetting this device's pad step " + p.padZoomStep); p.padZoomStep = 0; App.save(in); arrivalFails = 0; }
+            throw new Recover("no " + fname + " flowers in sight after the walk");
+        }
+        arrivalOk = true; arrivalFails = 0;
         // The walk ends near the middle of the field: place the sprinkler here (Natro's walk to a corner climbs the hedge).
         // Corner mode places it later, at the pattern's start in the corner.
         if (!cornerWanted()) placeSprinkler();
@@ -364,6 +368,7 @@ final class Engine implements Runnable {
         return Monitor.bannerTime == since ? 0 : Monitor.bannerRows;
     }
     private boolean sprinklerPlaced, arrivalOk;
+    private int arrivalFails;
     private void placeSprinkler(boolean walk, Moves.Key[] inward) {
         sprinkler = null; sprinklerPlaced = false;
         if (walk) walkToSprinklerSpot();   // also where the pattern starts, so it runs with "None" too
@@ -577,13 +582,19 @@ final class Engine implements Runnable {
         if (bestTurn != 0) { in.rotate(bestTurn > 4 ? bestTurn - 8 : bestTurn); sleep(450); }
         Log.add(String.format(Locale.US, "camera: hive row %.2f after %d turns, zooming in by eye", topRow, bestTurn));
         double f = zoomToHive();
-        // the hives are there but far: the central spawn, walk to the pad as Natro does. On the tablet the pad's best view
-        // is at zoom step 1 (0.69-0.75 live), the spawn's at step 3 (0.55-0.59, above the pad score). Phones peak later
-        // (S23 pad: step 5), so a far zoom only means spawn when our pad's prompt isn't up either.
-        // only the tap prompt counts: ownHive's blue banner read "yes" at the spawn live (no prompt on screen)
-        Vision.Result pr = zoomStep >= 3 ? waitFor(x -> promptKnown(x) && (x.prompt == Vision.Prompt.TAP_BLUE || x.prompt == Vision.Prompt.TAP_RED), 2500) : null;
-        boolean spawn = f >= FACING_SPAWN && (f < FACING_PAD || (zoomStep >= 3 && pr == null));
-        Log.add("camera: " + (spawn ? "at the central spawn" : "at our hive pad") + String.format(Locale.US, " (view %.2f, zoom step %d%s)", f, zoomStep, pr != null ? ", " + pr.prompt + " prompt" : ""));
+        // Where did the respawn put us? Bee Swarm respawns you on your hive's pad when you own one, else at the central
+        // spawn (live: every spawn landing came before "claimed slot 3"). Far hives = the spawn, but how far depends on
+        // the device: tablet pad step 1 / spawn step 3, the S23's pad ~5. A fixed "step 3+" sent phones standing on
+        // their own pad on the spawn walk, then reset, over and over (Discord, Galaxy A26: "respawn loops once it
+        // verifies my hive"). So: owning a hive this session = the pad; else this device's learned pad step + 2;
+        // else (first time here) the tablet's rule plus "no Make Honey prompt", and the walk teaches the pad step.
+        int step0 = zoomStep;
+        Vision.Result pr = !ownsHive && p.padZoomStep <= 0 && step0 >= 3
+                ? waitFor(x -> promptKnown(x) && (x.prompt == Vision.Prompt.TAP_BLUE || x.prompt == Vision.Prompt.TAP_RED), 2500) : null;   // the tap prompt only: the blue banner read "yes" at the spawn live
+        boolean far = ownsHive ? false : p.padZoomStep > 0 ? step0 >= p.padZoomStep + 2 : step0 >= 3 && pr == null;
+        boolean spawn = f >= FACING_SPAWN && (f < FACING_PAD || far);
+        Log.add("camera: " + (spawn ? "at the central spawn" : "at our hive pad") + String.format(Locale.US, " (view %.2f, zoom step %d%s%s)", f, step0,
+                ownsHive ? ", we own a hive" : p.padZoomStep > 0 ? ", this device's pad step " + p.padZoomStep : "", pr != null ? ", " + pr.prompt + " prompt" : ""));
         if (spawn) {
             decide("Walking to hive", "Respawned at the central spawn; walking to the hive pad.", String.format(Locale.US, "hive view %.2f", f), "face the hive from the pad", 0.8);
             run(Moves.natroSpawnToHive(p.hiveSlot, p.moveSpeed), "spawn to hive");
@@ -591,9 +602,23 @@ final class Engine implements Runnable {
             for (int i = 0; i < 20; i++) { in.key(android.view.KeyEvent.KEYCODE_O, 60); SystemClock.sleep(70); }
             sleep(500);
             f = zoomToHive();
-        }
+            if (f >= FACING_PAD && zoomStep < step0) learnPadStep(zoomStep, "after walking from the spawn");   // closer now: it was the spawn
+            else if (far && f < FACING_PAD) {   // the walk lost the hives: the respawn had put us on our pad after all
+                learnPadStep(step0, "the spawn walk lost the hives, so the respawn was on our pad");
+                throw new Recover(String.format(Locale.US, "walked from the spawn but was on the pad (zoom step %d is this device's pad)", step0));
+            }
+        } else if (f >= FACING_PAD && (ownsHive || pr != null)) learnPadStep(step0, ownsHive ? "we own a hive" : "our Make Honey prompt is up");
         if (f < FACING_PAD) throw new Recover(String.format(Locale.US, "could not find the hives with the camera (guided, best %.2f)", f));
         decideFacing(f, bestTurn);
+    }
+
+    /** We own a hive in this server (claimed it, saw its prompt, or converted at it): respawns land on its pad. A
+     *  rejoin puts us in a new server, where we own nothing until the claim. */
+    private boolean ownsHive;
+    private void learnPadStep(int step, String why) {
+        if (step <= 0 || step == p.padZoomStep) return;
+        Log.add("camera: this device's pad is at zoom step " + step + " (was " + (p.padZoomStep > 0 ? p.padZoomStep : "unknown") + "): " + why);
+        p.padZoomStep = step; App.save(in);
     }
 
     /** Zoom in one step at a time while the hive view gets better; stop just after its peak and step back to it. */
@@ -1292,6 +1317,7 @@ final class Engine implements Runnable {
         Vision.Result started = waitFor(x -> promptKnown(x) && x.prompt == Vision.Prompt.TAP_RED, 5000);
         if (started == null) { pause("Conversion did not start (no 'Stop Making Honey')"); checkpoint(); throw new Recover("conversion not verified"); }
         stats.conversions++;
+        ownsHive = true;   // only our own hive converts
         Log.add(String.format(Locale.US, "convert: started at %.0f%%", startPct));
         long honeyBefore = Monitor.honey;
         hook("convert", "🍯 Converting", String.format(Locale.US, "Backpack %.0f%% at hive slot %d", startPct, p.hiveSlot), Webhook.CYAN, true);

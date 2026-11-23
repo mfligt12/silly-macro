@@ -460,7 +460,50 @@ public class SelfTest {
               }
           }
           Remap.phoneCal = null;
-          check(bad == 0, "phone list: " + phones.length + " screen sizes x 3 UI scales x 3 cutout insets x " + fxs.length + " frames = " + runs + " runs, " + (runs - bad) + " read like the S23" + why); }
+          check(bad == 0, "phone list: " + phones.length + " screen sizes x 3 UI scales x 3 cutout insets x " + fxs.length + " frames = " + runs + " runs, " + (runs - bad) + " read like the S23" + why);
+          // Roblox voice chat on: its top-left bar (with the mic) covers the Honey pill's left end. User screenshots
+          // measured 89% instead of 94% and never found the HUD. Paint that dark bar over the pill on every phone size.
+          int vruns = 0, vbad = 0; StringBuilder vwhy = new StringBuilder();
+          for (Object[] d : phones) {
+              int w = (int) d[1], h = (int) d[2];
+              for (double km : new double[]{0.9, 1.0, 1.1}) {
+                double k = h / 1080.0 * km;
+                if (555 * k > w / 2.0 - 6 * k - 556 * k) continue;   // same rule as above: no real phone
+                double pillL = w / 2.0 - 6 * k + (608 - 1164) * k, top = 66 * k;
+                java.util.List<int[]> qs = new java.util.ArrayList<>(); java.util.List<Remap.Phone> reads = new java.util.ArrayList<>();
+                for (int i = 0; i < fxs.length; i++) {
+                    int[] q = phoneScreen(plPx.get(i), 2340, 1080, w, h, k, 0);
+                    for (int y = (int) (top - 30 * k); y < (int) (top + 100 * k); y++) for (int x = (int) (pillL - 120 * k); x < (int) (pillL + 70 * k); x++)
+                        if (x >= 0 && y >= 0 && x < w && y < h) q[y * w + x] = 0xFF1E1E1E;   // Roblox's bar: dark grey
+                    qs.add(q); Remap.Phone p1 = Remap.locatePhone(q, w, h); if (p1 != null) reads.add(p1);
+                }
+                for (int i = 0; i < fxs.length; i++) {
+                    vruns++;
+                    Remap.Phone ph = i < reads.size() ? reads.get(i) : null;
+                    Vision.Result o0 = fo.get(i), r = null;
+                    if (ph != null) { Remap.phoneCal = ph; r = Vision.analyze(Remap.apply(qs.get(i), w, h)); }
+                    boolean ok = ph != null && Math.abs(ph.k - k) < 0.015 * k && r.screen == o0.screen && Math.abs(r.pollen - o0.pollen) <= 3 && r.prompt == o0.prompt && r.haste == o0.haste && r.hasteSlot == o0.hasteSlot;
+                    if (!ok) { vbad++; if (vwhy.length() < 400) vwhy.append(String.format(" | %s %dx%d k%.2f %s: %s", d[0], w, h, k, fxs[i], ph == null ? "HUD not found" : ph + (r == null ? "" : " " + r.screen + " bag " + Math.round(r.pollen)))); }
+                }
+              }
+          }
+          Remap.phoneCal = null;
+          check(vbad == 0, "voice chat bar over the Honey pill: " + vruns + " runs on every phone size, " + (vruns - vbad) + " measured within 1.5% and read like the S23" + vwhy); }
+        { // the user screenshots behind the fix (FireSnacks223, 2026-11-22, 2340x1080 phone, voice chat on, the HUD with
+          // "/sec" rates and thinner pills): HUD found at ~94% in the field and in front of the hive, readings right
+          String[][] vc = {{"vc_field_bag1.jpg", "GAME", "1", "NONE"}, {"vc_field_planter.jpg", "GAME", "0", "TAP_OTHER"},
+                           {"vc_hive.jpg", "GAME", "0", "NONE"}, {"vc_hive_banner.jpg", "GAME", "0", "BANNER_BLUE"}};
+          int n = 0, ok = 0; StringBuilder why = new StringBuilder();
+          for (String[] c : vc) {
+              File ff = new File("test/fixtures/" + c[0]); if (!ff.exists()) continue;
+              BufferedImage im = ImageIO.read(ff); int w = im.getWidth(), h = im.getHeight(); int[] q = im.getRGB(0, 0, w, h, null, 0, w);
+              Remap.Phone ph = Remap.locatePhone(q, w, h); n++;
+              Vision.Result r = null; if (ph != null) { Remap.phoneCal = ph; r = Vision.analyze(Remap.apply(q, w, h)); }
+              if (ph != null && Math.abs(ph.k - 0.937) < 0.01 && r.screen.name().equals(c[1]) && Math.round(r.pollen) == Integer.parseInt(c[2]) && r.prompt.name().equals(c[3])) ok++;
+              else why.append(" | ").append(c[0]).append(": ").append(ph == null ? "HUD not found" : ph + " " + r.screen + " bag " + Math.round(r.pollen) + " " + r.prompt);
+          }
+          Remap.phoneCal = null;
+          if (n > 0) check(ok == n, "voice-chat user screenshots: " + ok + "/" + n + " read right (scale 94%, GAME, bag, prompt incl. planter = TAP_OTHER)" + why); }
         { // foldables' inner screens and other tablets (Android 13+) use the tablet reader: the UI scale is measured from
           // the honey counter, then every reading must match the Tab S9 FE's
           Object[][] tabs = {{"Z Fold3-7 inner", 2176, 1812}, {"Pixel Fold inner", 2208, 1840}, {"Pixel 9/10 Pro Fold inner", 2152, 2076},
