@@ -864,7 +864,7 @@ final class Engine implements Runnable {
         String back = phase; phase = "Recovering field";
         saveGuardFrame("outside");
         Log.add("field: outside the field, recovering (#" + fieldOuts + ")");
-        decide("Recovering", "Left the field; the pattern is on hold until we are back inside.", String.valueOf(Monitor.fieldRead), "resume Skillet", 0.8);
+        decide("Recovering", "Left the field; the pattern is on hold until we are back inside.", String.valueOf(Monitor.fieldRead), "resume " + patName(), 0.8);
         int good = 0, yaw = 0, looks = 0, memoryTries = 0; boolean sawSprinkler = false; long t0 = SystemClock.uptimeMillis();
         try {
             while (true) {
@@ -1422,6 +1422,8 @@ final class Engine implements Runnable {
 
     /** The chosen farming pattern: Skillet, or a Natro Macro pattern read from assets/patterns (falls back to Skillet). */
     private boolean natroPattern;   // the last farmPattern() is a Natro pattern (not Skillet or the Skillet fallback)
+    /** The pattern really running, for the panel (it said "Skillet" during every pattern: Discord "using CornerXSnake but it still uses Skillet"). */
+    private String patName() { return natroPattern ? p.pattern : "Skillet"; }
     private List<Moves.Step> farmPattern() {
         natroPattern = false;
         if (!p.pattern.equals("Skillet")) {
@@ -1630,8 +1632,8 @@ final class Engine implements Runnable {
             for (int i = 0; i < sk.size(); i++) {
                 checkpoint();
                 Moves.Step s = sk.get(i);
-                step = "Skillet loop " + loop + " · " + (i + 1) + "/" + sk.size() + ": " + s;
-                decide("Farming", "Skillet step " + (i + 1) + "/" + sk.size(), 1);
+                step = patName() + " loop " + loop + " · " + (i + 1) + "/" + sk.size() + ": " + s;
+                decide("Farming", patName() + " step " + (i + 1) + "/" + sk.size(), 1);
                 if (stepBlocked(s)) { fieldControl(); continue; }
                 exec(s);
                 timedReport();
@@ -1661,7 +1663,7 @@ final class Engine implements Runnable {
             if (loop == 2) {   // 1 bar pixel ≈ 0.24%; a big bag can need ~2 loops to show any rise
                 Vision.Result r = waitFor(this::bagKnown, 3000);
                 if (p.keyboard()) { /* the bag % can fall when capacity grows: the field guard watches this instead */ }
-                else if (r == null || r.pollen - startPct < 0.2) throw new Recover("pollen did not rise during two Skillet loops — not in a field");
+                else if (r == null || r.pollen - startPct < 0.2) throw new Recover("pollen did not rise during two pattern loops — not in a field");
                 if (r != null) nav = String.format(Locale.US, "Pine Tree Forest (pollen %.1f%% → %.1f%%)", startPct, r.pollen);
             }
             if (SystemClock.uptimeMillis() - t0 > p.fieldMinutes * 60_000L) { Log.add("farm: field time limit " + p.fieldMinutes + " min"); return; }
@@ -1688,8 +1690,8 @@ final class Engine implements Runnable {
         if (!key.equals(lastBuffKey)) {
             boolean haste = key.contains("Haste"), hadHaste = lastBuffKey.contains("Haste");
             if (haste != hadHaste) decide("Farming", haste ? "Detected Haste. Player movement is faster than baseline. " + (hasteFix ? "Pattern walks are covered by distance at the live speed." : "Haste correction is off: pattern timing unchanged.")
-                    : "Haste ended. Back to base movement timing.", "buff row: " + key, "continue Skillet", 1);
-            else if (key.contains("Bear Morph") && !lastBuffKey.contains("Bear Morph")) decide("Farming", "Bear Morph detected. Added it to the active boost tracker.", "buff row: " + key, "continue Skillet", 1);
+                    : "Haste ended. Back to base movement timing.", "buff row: " + key, "continue " + patName(), 1);
+            else if (key.contains("Bear Morph") && !lastBuffKey.contains("Bear Morph")) decide("Farming", "Bear Morph detected. Added it to the active boost tracker.", "buff row: " + key, "continue " + patName(), 1);
             lastBuffKey = key;
         }
         if (r == null || !bagKnown(r)) return;
@@ -1763,7 +1765,7 @@ final class Engine implements Runnable {
         else if (end.how.equals("vanished at the player")) outcome = reached ? "collected" : "unverified (vanished near the player before we reached it)";
         else outcome = "disappeared (away from the player: despawned or unknown)";
         if (end != null && end.renamed) outcome += ", recognition changed during tracking";
-        decide("Returning to route", "Token " + outcome + ". Returning to farming route.", "walked " + walked + " ms in " + path.size() + " presses", "reverse " + path.size() + " presses, resume Skillet", 1);
+        decide("Returning to route", "Token " + outcome + ". Returning to farming route.", "walked " + walked + " ms in " + path.size() + " presses", "reverse " + path.size() + " presses, resume " + patName(), 1);
         for (int i = path.size() - 1; i >= 0; i--) {
             checkpoint();
             @SuppressWarnings("unchecked") EnumSet<Moves.Key> ks = (EnumSet<Moves.Key>) path.get(i)[0];
@@ -1791,10 +1793,10 @@ final class Engine implements Runnable {
                 if (t.d.cat == Detector.Cat.LANDMARK && !t.d.buff && t.confirmed() != null && t.d.conf >= p.boxMinConf && SystemClock.uptimeMillis() - t.last < 400) lm = t;
             if (lm == null) sleep(150);
         }
-        if (lm == null) { decide("Farming", "Position unknown, so no correction (safer than guessing).", "no confirmed landmark visible", "continue Skillet", 0); Log.add("drift: landmark not visible, no correction"); return; }
+        if (lm == null) { decide("Farming", "Position unknown, so no correction (safer than guessing).", "no confirmed landmark visible", "continue " + patName(), 0); Log.add("drift: landmark not visible, no correction"); return; }
         double off = Math.hypot(lm.d.cx() - a[0], lm.d.cy() - a[1]) / a[2];
         if (off <= p.driftTolerance) { prevResult = String.format(Locale.US, "on route (landmark %.0f%% off)", off * 100); return; }
-        decide("Correcting drift", "Movement deviation detected. Pausing pattern for position correction.", String.format(Locale.US, "%s %.0f%% of screen off-centre", lm.d.label, off * 100), "walk toward it, then resume Skillet", lm.d.conf);
+        decide("Correcting drift", "Movement deviation detected. Pausing pattern for position correction.", String.format(Locale.US, "%s %.0f%% of screen off-centre", lm.d.label, off * 100), "walk toward it, then resume " + patName(), lm.d.conf);
         phase = "Correcting drift";
         long walked = 0; int id = lm.id;
         while (walked < p.maxCorrectMs) {
