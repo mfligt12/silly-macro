@@ -112,6 +112,7 @@ final class Engine implements Runnable {
     private volatile Thread worker;
     @Override public void run() {
         worker = Thread.currentThread();
+        final int userSlot = p.hiveSlot;   // an auto-picked free hive is for this run only
         Log.add("engine: start (" + Profile.PRESET + ", hive slot " + p.hiveSlot + ", threshold " + p.backpackThreshold + "%)");
         lastHourly = SystemClock.uptimeMillis();
         hook("session", "▶ Macro started", Routes.name(p.field) + " · " + p.pattern + "\nHive slot " + p.hiveSlot + " · bag limit " + p.backpackThreshold + "% · " + p.fieldMinutes + " min"
@@ -146,6 +147,7 @@ final class Engine implements Runnable {
             stats.errors++; reason = "error: " + t; Log.add("engine crash: " + android.util.Log.getStackTraceString(t));
         } finally {
             in.emergencyRelease();
+            if (p.hiveSlot != userSlot) { p.hiveSlot = userSlot; App.save(in); }
             stats.finish(reason.isEmpty() ? "stopped" : reason);
             Stats.save(in, stats);
             phase = "Stopped"; done = true;
@@ -219,19 +221,32 @@ final class Engine implements Runnable {
         Vision.Result r = waitFor(x -> promptKnown(x), 3000);
         if (r != null && ownHive(r)) { if (r.prompt != Vision.Prompt.BANNER_BLUE) ownsHive = true; return; }
         if (r != null && r.prompt == Vision.Prompt.TAP_CLAIM) { claimHere(); return; }
-        if (!night()) return;
-        if (p.hiveConfirmed) { Log.add("hive: prompt not read at confirmed slot " + p.hiveSlot + ", keeping it"); return; }   // never overwrite the user's slot
+        if (!p.autoHiveSlot || ownsHive) return;   // we own one elsewhere: respawning brings us to it
+        // Taken = the prompt is readable and it's neither our hive nor Claim Hive, on a second look too (a walk that
+        // missed the pad reads NONE once; give the banner time). Unreadable = don't guess, keep the slot.
+        if (r == null) { Log.add("hive: prompt not readable at slot " + p.hiveSlot + ", keeping it"); return; }
+        sleep(2000);
+        Vision.Result r2 = waitFor(x -> promptKnown(x), 3000);
+        if (r2 == null || ownHive(r2) || r2.prompt == Vision.Prompt.TAP_CLAIM) { if (r2 != null && r2.prompt == Vision.Prompt.TAP_CLAIM) claimHere(); return; }
         int start = p.hiveSlot;
-        for (int s : new int[]{3, 2, 4, 1, 5, 6}) {
-            if (s == start) continue;
-            Log.add("hive: slot " + p.hiveSlot + " not ours or free, trying slot " + s);
-            p.hiveSlot = s; respawn(); alignCamera();
+        int[] order = Profile.slotOrder(start);
+        for (int i = 1; i < order.length; i++) {
+            int s = order[i];
+            Log.add("hive: slot " + p.hiveSlot + " is taken, trying slot " + s);
+            decide("Finding a free hive", "Hive slot " + start + " belongs to someone else", "no Claim Hive / own-hive prompt at slot " + p.hiveSlot, "try slot " + s, 0.8);
+            p.hiveSlot = s; respawn(); alignCamera();   // not saved: your chosen slot is tried first again next run / server
             Vision.Result q = waitFor(x -> promptKnown(x), 3000);
-            if (q != null && ownHive(q)) { App.save(in); return; }
-            if (q != null && q.prompt == Vision.Prompt.TAP_CLAIM) { claimHere(); App.save(in); return; }
+            if (q != null && ownHive(q)) { autoSlotNote(start, s); return; }
+            if (q != null && q.prompt == Vision.Prompt.TAP_CLAIM) { claimHere(); autoSlotNote(start, s); return; }
         }
         p.hiveSlot = start;
         throw new Recover("no free hive found");
+    }
+    /** Panel + log + webhook: which slot was taken instead of the chosen one. */
+    private void autoSlotNote(int wanted, int got) {
+        String m = "Hive slot " + wanted + " was taken, using slot " + got + " instead (this run only)";
+        Log.add("hive: " + m); decide("Using hive slot " + got, m, 1); nav = m;
+        hook("problem", "🐝 Hive slot changed", m, Webhook.GOLD, true);
     }
     private void claimHere() {
         prompt(); sleep(2500);

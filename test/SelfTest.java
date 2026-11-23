@@ -716,6 +716,10 @@ public class SelfTest {
         File dir = Files.createTempDirectory("bm").toFile();
         Profile p = Profile.load(dir);
         check(Profile.file(dir).exists() && p.backpackThreshold == 90 && p.hiveSlot == 3, "profile created with defaults");
+        check(p.autoHiveSlot && java.util.Arrays.equals(Profile.slotOrder(3), new int[]{3, 2, 4, 1, 5, 6})
+                && java.util.Arrays.equals(Profile.slotOrder(1), new int[]{1, 3, 2, 4, 5, 6})
+                && java.util.Arrays.equals(Profile.slotOrder(6), new int[]{6, 3, 2, 4, 1, 5}),
+              "taken hive: your slot first, then 3 and the slots nearest it (auto-pick on by default)");
         p.backpackThreshold = 85; p.hiveConfirmed = true; p.pxPer45 = 340; p.save(dir);
         Profile q = Profile.load(dir);
         check(q.backpackThreshold == 85 && q.hiveConfirmed && q.pxPer45 == 340, "profile persists across reload");

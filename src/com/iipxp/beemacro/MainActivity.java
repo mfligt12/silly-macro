@@ -533,6 +533,7 @@ public class MainActivity extends Activity {
         hr.addView(button("+", 0, v -> { p.hiveSlot = Math.min(6, p.hiveSlot + 1); p.hiveConfirmed = false; App.save(this); refresh(); }), new LinearLayout.LayoutParams(0, dp(48), 1));
         hr.addView(button("Confirm slot", PURPLE, v -> { p.hiveConfirmed = true; App.save(this); Log.add("hive: slot " + p.hiveSlot + " confirmed by user"); refresh(); }), new LinearLayout.LayoutParams(0, dp(48), 2));
         hv.addView(hr);
+        hv.addView(toggle("If this hive is taken, use the nearest free one (3 first)", p.autoHiveSlot, on -> p.autoHiveSlot = on));
         hv.addView(stepper("Your move speed (Bee Swarm stats)", () -> String.format(Locale.US, "%.2f", p.moveSpeed), x -> p.moveSpeed = Math.round((p.moveSpeed + x * 0.05) * 100) / 100.0));
         hv.addView(button("Type your move speed", 0, v -> {   // e.g. 29.9: the − / + steps can't land on every value
             android.widget.EditText et = new android.widget.EditText(this);

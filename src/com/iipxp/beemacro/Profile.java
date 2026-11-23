@@ -20,6 +20,14 @@ public final class Profile {
     // Hive (identity only — reaching it is verified separately by the on-screen prompt)
     public int hiveSlot = 3;
     public boolean hiveConfirmed = false;
+    /** If the chosen hive is someone else's, claim the nearest free one instead (for this run; your slot stays saved). */
+    public boolean autoHiveSlot = true;
+    /** Slots to try after `first`: 3 (straight ahead of spawn, the most tested) then the ones closest to it. */
+    public static int[] slotOrder(int first) {
+        int[] all = {3, 2, 4, 1, 5, 6}, o = new int[6]; o[0] = first; int n = 1;
+        for (int s : all) if (s != first) o[n++] = s;
+        return o;
+    }
 
     // Gather (from nm_config.ini: MoveSpeedNum=33.35, FieldUntilMins1=10, FieldRotateDirection1=Right, FieldRotateTimes1=4)
     public double moveSpeed = 33.35;
