@@ -1,3 +1,4 @@
+import com.iipxp.beemacro.Report;
 import com.iipxp.beemacro.VisualAnchor;
 import com.iipxp.beemacro.FieldMessages;
 import com.iipxp.beemacro.Buffs;
@@ -716,6 +717,25 @@ public class SelfTest {
         File dir = Files.createTempDirectory("bm").toFile();
         Profile p = Profile.load(dir);
         check(Profile.file(dir).exists() && p.backpackThreshold == 90 && p.hiveSlot == 3, "profile created with defaults");
+        { // "Send report to the developer": only the Honey/Pollen band leaves the phone, the log is redacted and capped
+          boolean ok = true; StringBuilder why = new StringBuilder();
+          for (String[] c : new String[][]{{"s23_newhud_beam.png", "phone"}, {"vc_hive_mic.jpg", "phone"}, {"tab_field_middle.png", "tablet"}}) {
+              File ff = new File("test/fixtures/" + c[0]); if (!ff.exists()) continue;
+              BufferedImage im = ImageIO.read(ff); int w = im.getWidth(), h = im.getHeight(); int[] q = im.getRGB(0, 0, w, h, null, 0, w);
+              if (c[1].equals("phone")) Remap.phoneCal = Remap.locatePhone(q, w, h); else Remap.uiCal = Remap.calibrate(q, w, h);
+              int[] b = Report.hudBand(w, h);
+              // the counters' white pill ends must be inside, and nothing below the buff row / above-HUD world beyond a thin strip
+              double pl = c[1].equals("phone") ? Remap.phoneCal.cxX(615) : Remap.cx(560, w, Remap.u(h)), pr = c[1].equals("phone") ? Remap.phoneCal.cxX(1708) : Remap.cx(1720, w, Remap.u(h));
+              boolean good = b != null && b[0] <= pl && b[2] >= pr && b[3] - b[1] <= 0.13 * h && b[2] - b[0] <= 0.6 * w && Report.crop(q, w, b).length == (b[2] - b[0]) * (b[3] - b[1]);
+              if (!good) { ok = false; why.append(" | ").append(c[0]).append(b == null ? " null" : " " + java.util.Arrays.toString(b)); }
+              Remap.phoneCal = null; Remap.uiCal = 0;
+          }
+          ok &= Report.hudBand(1080, 2340) == null;                        // portrait (Silly Macro's own screen): never cropped
+          int[] fb = Report.hudBand(2400, 1080); ok &= fb != null && fb[3] <= 0.14 * 1080 + 1;   // not measured yet: top strip only
+          StringBuilder big = new StringBuilder("player me@mail.com\n"); while (big.length() < 400_000) big.append("vision: 1.0 fps, last frame 32 ms\n");
+          String lg = Report.log(big.toString());
+          ok &= !Report.log("a me.x+y@gmail.com b").contains("@") && lg.length() <= Report.MAX_LOG_CHARS && Report.docBytes(lg, Report.MAX_IMAGE_BYTES) < 1_048_576;
+          check(ok, "report: counter band only (S23, voice-chat phone, tablet), portrait never, log emails hidden + capped, document under 1 MiB" + why); }
         check(p.autoHiveSlot && java.util.Arrays.equals(Profile.slotOrder(3), new int[]{3, 2, 4, 1, 5, 6})
                 && java.util.Arrays.equals(Profile.slotOrder(1), new int[]{1, 3, 2, 4, 5, 6})
                 && java.util.Arrays.equals(Profile.slotOrder(6), new int[]{6, 3, 2, 4, 1, 5}),

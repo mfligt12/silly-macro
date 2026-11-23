@@ -51,12 +51,22 @@ public final class Fb {
         try { call("PATCH", doc(path) + mask, idToken, new JSONObject().put("fields", fields).toString()); }
         catch (org.json.JSONException e) { throw new Error("BAD_JSON"); }
     }
+    /** A new document with an automatic id in the collection. */
+    public void create(String idToken, String collection, JSONObject fields) throws Error {
+        try { call("POST", doc(collection), idToken, new JSONObject().put("fields", fields).toString()); }
+        catch (org.json.JSONException e) { throw new Error("BAD_JSON"); }
+    }
+    /** Deletes a document; path is its full name ("projects/…/documents/reports/x") or relative ("reports/x"). */
+    public void delete(String idToken, String path) throws Error {
+        call("DELETE", path.startsWith("projects/") ? "https://firestore.googleapis.com/v1/" + path : doc(path), idToken, null);
+    }
     /** All documents of a collection (follows pages). */
-    public java.util.List<JSONObject> list(String idToken, String collection) throws Error {
+    public java.util.List<JSONObject> list(String idToken, String collection, String... onlyFields) throws Error {
         java.util.List<JSONObject> out = new java.util.ArrayList<>();
-        String next = "";
+        String next = "", mask = "";
+        for (String f : onlyFields) mask += "&mask.fieldPaths=" + enc(f);   // e.g. reports without their log + image
         do {
-            JSONObject j = call("GET", doc(collection) + "?pageSize=300" + (next.isEmpty() ? "" : "&pageToken=" + enc(next)), idToken, null);
+            JSONObject j = call("GET", doc(collection) + "?pageSize=300" + mask + (next.isEmpty() ? "" : "&pageToken=" + enc(next)), idToken, null);
             org.json.JSONArray a = j.optJSONArray("documents");
             if (a != null) for (int i = 0; i < a.length(); i++) out.add(a.optJSONObject(i));
             next = j.optString("nextPageToken", "");
@@ -67,6 +77,10 @@ public final class Fb {
     public static boolean bool(JSONObject doc, String f) { JSONObject v = field(doc, f); return v != null && v.optBoolean("booleanValue", false); }
     static JSONObject field(JSONObject doc, String f) { JSONObject fs = doc == null ? null : doc.optJSONObject("fields"); return fs == null ? null : fs.optJSONObject(f); }
     public static JSONObject s(String v) { try { return new JSONObject().put("stringValue", v); } catch (org.json.JSONException e) { throw new RuntimeException(e); } }
+    public static JSONObject bytes(byte[] v) { try { return new JSONObject().put("bytesValue", java.util.Base64.getEncoder().encodeToString(v)); } catch (org.json.JSONException e) { throw new RuntimeException(e); } }
+    public static byte[] bytesOf(JSONObject doc, String f) { JSONObject v = field(doc, f); String s = v == null ? "" : v.optString("bytesValue", ""); return s.isEmpty() ? null : java.util.Base64.getDecoder().decode(s); }
+    public static long num(JSONObject doc, String f) { JSONObject v = field(doc, f); return v == null ? 0 : v.optLong("integerValue", 0); }
+    public static JSONObject n(long v) { try { return new JSONObject().put("integerValue", String.valueOf(v)); } catch (org.json.JSONException e) { throw new RuntimeException(e); } }
     public static JSONObject b(boolean v) { try { return new JSONObject().put("booleanValue", v); } catch (org.json.JSONException e) { throw new RuntimeException(e); } }
     public static JSONObject now() {
         java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US); f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));

@@ -77,6 +77,7 @@ Official builds ask you to sign in, using Firebase Authentication. The admin can
 
 - **What's stored:** your email, when you last used the app, your device model and the app version.
 - **What's never stored:** your password. It goes only to Firebase.
+- **Bug reports, only when you tap *Send* in Settings → Debug → Send report to the developer:** your debug log (emails hidden) and one screenshot of just the Honey/Pollen counters, with your account id, app version, phone model and Android version. You see both before sending. Only the admin can read reports.
 
 A build made from this source without `assets/firebase.properties` has no login.
 

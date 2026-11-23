@@ -747,7 +747,46 @@ public class MainActivity extends Activity {
             text = text.replaceAll("[\\w.+-]+@[\\w-]+\\.[\\w.]+", "[email hidden]");   // never share the account email
             startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Share Silly Macro log"));
         }));
+        if (Account.configured(this)) dbg.addView(button("Send report to the developer (log + counter screenshot)", PURPLE, v -> sendReport()));
         dbg.addView(tv(Profile.NAME + " · " + Profile.PRESET, 11, Ui.FAINT));
+    }
+
+    /** Shows exactly what goes out (the Honey/Pollen counter strip + the log) and sends it only on "Send". */
+    void sendReport() {
+        if (!Account.signedIn(this)) { toast("Sign in to Silly Macro first"); return; }
+        String log = Report.log("Silly Macro " + versionName() + "\n" + deviceSummary() + "\nHUD: " + Monitor.calState + "\n\n" + Log.dump(Report.LOG_LINES));
+        int[] shot = Monitor.hudShot; int sw = Monitor.hudShotW, sh = Monitor.hudShotH;
+        android.graphics.Bitmap bm = shot == null ? null : android.graphics.Bitmap.createBitmap(shot, sw, sh, android.graphics.Bitmap.Config.ARGB_8888);
+        byte[] jpeg = bm == null ? null : jpeg(bm);
+        LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(20), dp(8), dp(20), 0);
+        box.addView(tv("Only these two things are sent, with your account id, app version and phone model:", 13, TXT));
+        if (bm != null && jpeg != null) {
+            android.widget.ImageView iv = new android.widget.ImageView(this); iv.setImageBitmap(bm); iv.setAdjustViewBounds(true);
+            box.addView(iv, new LinearLayout.LayoutParams(-1, -2));
+            long age = (android.os.SystemClock.uptimeMillis() - Monitor.hudShotTime) / 1000;
+            box.addView(tv("1. This screenshot of the Honey/Pollen counters (" + jpeg.length / 1024 + " KB, from " + (age < 60 ? age + " s" : age / 60 + " min") + " ago)", 12, DIM));
+        } else box.addView(tv("1. No counter screenshot (screen capture hasn't seen the game yet: allow it in Home step 3, open Bee Swarm sideways for a few seconds, then come back)", 12, Ui.GOLD));
+        box.addView(tv("2. Your debug log, " + Report.lines(log) + " lines (emails hidden)", 12, DIM));
+        final byte[] img = jpeg;
+        new android.app.AlertDialog.Builder(this).setTitle("Send report to the developer?").setView(box)
+                .setPositiveButton("Send", (d, w) -> {
+                    toast("Sending…");
+                    new Thread(() -> { String err = Account.sendReport(this, log, img); runOnUiThread(() -> toast(err == null ? "Report sent. Thanks!" : "Not sent: " + err)); }).start();
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
+    /** JPEG at most Report.MAX_IMAGE_BYTES: lower quality first, then smaller. */
+    static byte[] jpeg(android.graphics.Bitmap bm) {
+        android.graphics.Bitmap b = bm;
+        for (int i = 0; i < 8; i++) {
+            for (int q : new int[]{80, 60, 40}) {
+                java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+                b.compress(android.graphics.Bitmap.CompressFormat.JPEG, q, o);
+                if (o.size() <= Report.MAX_IMAGE_BYTES) return o.toByteArray();
+            }
+            b = android.graphics.Bitmap.createScaledBitmap(b, Math.max(1, b.getWidth() * 7 / 10), Math.max(1, b.getHeight() * 7 / 10), true);
+        }
+        return null;
     }
 
     /** What each phone maker's system blocks, in its own menu names; null = nothing extra (Samsung, Pixel, Motorola). */

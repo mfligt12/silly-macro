@@ -23,6 +23,14 @@ final class Monitor {
      *  has been the latest one named (0 = Pine Tree Forest was last). */
     static volatile long msgPine, msgOther, msgOtherSince;
     static volatile boolean bannerWanted; static volatile int bannerRows; static volatile long bannerTime;
+    /** The Honey/Pollen band of a recent landscape frame, for "Send report" (only this crop is ever kept or sent). */
+    static volatile int[] hudShot; static volatile int hudShotW, hudShotH; static volatile long hudShotTime; static volatile boolean hudShotGame;
+    static void keepHud(CaptureService.Frame f, boolean game, long now) {
+        if (now - hudShotTime < 3000) return;
+        if (!game && hudShotGame && now - hudShotTime < 120_000) return;   // a game frame beats any other for 2 min
+        int[] b = Report.hudBand(f.w, f.h); if (b == null) return;
+        hudShot = Report.crop(f.px, f.w, b); hudShotW = b[2] - b[0]; hudShotH = b[3] - b[1]; hudShotTime = now; hudShotGame = game;
+    }
     static volatile boolean shotWanted; static volatile int[] shotPx; static volatile int shotW, shotH; static volatile long shotTime;
     static final Detector.Tracker tracker = new Detector.Tracker();
     static volatile Buffs buffs;
@@ -148,6 +156,7 @@ final class Monitor {
                     Vision.Result r = Vision.analyze(ro);
                     long tn = SystemClock.uptimeMillis();
                     autoRecalibrate(p, r, f, tn);
+                    keepHud(f, r.screen == Vision.Screen.GAME, tn);
                     if (ro.tablet && r.screen == Vision.Screen.GAME) {   // pollen counter digits changing = pollen coming in
                         boolean[] sig = Vision.pollenText(f.px, f.w, f.h);
                         int d = Vision.textDiff(pollenSig, sig);

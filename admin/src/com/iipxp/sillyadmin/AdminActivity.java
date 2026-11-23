@@ -75,6 +75,7 @@ public class AdminActivity extends Activity {
         col.addView(tv("Signed in as " + sp.getString("email", "") + "\nYour UID: " + sp.getString("uid", ""), 12, DIM));
         LinearLayout r = new LinearLayout(this);
         r.addView(button("Refresh", PURPLE, v -> load()), new LinearLayout.LayoutParams(0, -2, 1));
+        r.addView(button("Reports", GOLD, v -> showReports()), new LinearLayout.LayoutParams(0, -2, 1));
         r.addView(button("Sign out", CARD, v -> { sp.edit().clear().apply(); showLogin(); }), new LinearLayout.LayoutParams(0, -2, 1));
         col.addView(r);
         search = edit("Search email or device", InputType.TYPE_CLASS_TEXT);
@@ -158,6 +159,77 @@ public class AdminActivity extends Activity {
             } catch (Fb.Error x) { runOnUiThread(() -> status.setText(Fb.explain(x.code))); }
             catch (org.json.JSONException x) { runOnUiThread(() -> status.setText("error")); }
         }).start();
+    }
+
+    // ---- reports ("Send report to the developer" in Silly Macro: debug log + one Honey/Pollen counter screenshot)
+    void showReports() {
+        LinearLayout col = screen("Reports");
+        LinearLayout r = new LinearLayout(this);
+        r.addView(button("Refresh", PURPLE, v -> showReports()), new LinearLayout.LayoutParams(0, -2, 1));
+        r.addView(button("Users", CARD, v -> showUsers()), new LinearLayout.LayoutParams(0, -2, 1));
+        col.addView(r);
+        TextView st = tv("Loading…", 13, DIM); col.addView(st);
+        LinearLayout rl = new LinearLayout(this); rl.setOrientation(LinearLayout.VERTICAL); col.addView(rl);
+        new Thread(() -> {
+            try {
+                String t = token();
+                List<JSONObject> got = fb.list(t, "reports", "uid", "createdAt", "version", "device", "android", "logLines");
+                got.sort((a, c) -> Fb.str(c, "createdAt").compareTo(Fb.str(a, "createdAt")));
+                java.util.Map<String, String> emails = new java.util.HashMap<>();
+                for (JSONObject u : users) { String n = u.optString("name"); emails.put(n.substring(n.lastIndexOf('/') + 1), Fb.str(u, "email")); }
+                runOnUiThread(() -> {
+                    st.setText(got.size() + " reports, newest first");
+                    for (JSONObject d : got) {
+                        String uid = Fb.str(d, "uid"), who = emails.containsKey(uid) ? emails.get(uid) : "UID " + uid;
+                        LinearLayout c = card();
+                        TextView e = tv(who, 15, TXT); e.setTypeface(Typeface.DEFAULT_BOLD); c.addView(e);
+                        c.addView(tv(Fb.str(d, "device") + " · Android " + Fb.str(d, "android") + " · v" + Fb.str(d, "version") + "\n"
+                                + Fb.str(d, "createdAt").replace('T', ' ').replace("Z", " UTC") + " · " + Fb.num(d, "logLines") + " log lines", 12, DIM));
+                        c.setOnClickListener(v -> openReport(d.optString("name"), who));
+                        rl.addView(c);
+                    }
+                });
+            } catch (Fb.Error x) { runOnUiThread(() -> st.setText(Fb.explain(x.code))); }
+        }).start();
+    }
+
+    void openReport(String name, String who) {
+        LinearLayout col = screen("Report");
+        col.addView(tv(who, 14, TXT));
+        TextView st = tv("Loading…", 13, DIM); col.addView(st);
+        new Thread(() -> {
+            try {
+                JSONObject d = fb.get(token(), name.substring(name.indexOf("/documents/") + 11));
+                runOnUiThread(() -> {
+                    if (d == null) { st.setText("Already deleted."); return; }
+                    st.setText(Fb.str(d, "device") + " · Android " + Fb.str(d, "android") + " · v" + Fb.str(d, "version") + "\n" + Fb.str(d, "createdAt").replace('T', ' ').replace("Z", " UTC"));
+                    byte[] img = Fb.bytesOf(d, "image");
+                    android.graphics.Bitmap bm = img == null ? null : android.graphics.BitmapFactory.decodeByteArray(img, 0, img.length);
+                    if (bm != null) { android.widget.ImageView iv = new android.widget.ImageView(this); iv.setImageBitmap(bm); iv.setAdjustViewBounds(true); col.addView(iv, new LinearLayout.LayoutParams(-1, -2)); }
+                    else col.addView(tv("(no screenshot)", 12, DIM));
+                    String log = Fb.str(d, "log");
+                    LinearLayout r = new LinearLayout(this);
+                    r.addView(button("Copy log", PURPLE, v -> {
+                        ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(android.content.ClipData.newPlainText("Silly Macro log", log));
+                        android.widget.Toast.makeText(this, "Log copied", android.widget.Toast.LENGTH_SHORT).show();
+                    }), new LinearLayout.LayoutParams(0, -2, 1));
+                    r.addView(button("Delete", RED, v -> new AlertDialog.Builder(this).setTitle("Delete this report?")
+                            .setPositiveButton("Delete", (dd, w) -> new Thread(() -> {
+                                try { fb.delete(token(), name); runOnUiThread(this::showReports); }
+                                catch (Fb.Error x) { runOnUiThread(() -> st.setText(Fb.explain(x.code))); }
+                            }).start()).setNegativeButton("Cancel", null).show()), new LinearLayout.LayoutParams(0, -2, 1));
+                    r.addView(button("Back", CARD, v -> showReports()), new LinearLayout.LayoutParams(0, -2, 1));
+                    col.addView(r);
+                    TextView lt = tv(log, 11, TXT); lt.setTypeface(Typeface.MONOSPACE); lt.setTextIsSelectable(true); col.addView(lt);
+                });
+            } catch (Fb.Error x) { runOnUiThread(() -> st.setText(Fb.explain(x.code))); }
+        }).start();
+    }
+    LinearLayout card() {
+        LinearLayout c = new LinearLayout(this); c.setOrientation(LinearLayout.VERTICAL); c.setPadding(dp(14), dp(12), dp(14), dp(12));
+        GradientDrawable bg = new GradientDrawable(); bg.setColor(CARD); bg.setCornerRadius(dp(14)); bg.setStroke(dp(1), 0x22FFFFFF); c.setBackground(bg);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.topMargin = dp(10); c.setLayoutParams(lp);
+        return c;
     }
 
     // ---- views

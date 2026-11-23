@@ -77,6 +77,25 @@ final class Account {
             return System.currentTimeMillis() - ok < OFFLINE_GRACE_MS ? null : "Can't reach the account server (" + Fb.explain(e.code) + ")";
         } catch (org.json.JSONException e) { return null; }
     }
+    /** Uploads one report (reports/{auto id}) as the signed-in user. Null = sent, else why not. Not on the UI thread. */
+    static String sendReport(Context c, String log, byte[] jpeg) {
+        if (!configured(c)) return "This build has no account server.";
+        if (!signedIn(c)) return "Sign in to Silly Macro first.";
+        SharedPreferences sp = prefs(c);
+        try {
+            Fb.User u = fb(c).refresh(sp.getString("refresh", ""));
+            sp.edit().putString("refresh", u.refresh).apply();
+            JSONObject f = new JSONObject();
+            f.put("uid", Fb.s(u.uid)); f.put("createdAt", Fb.now()); f.put("version", Fb.s(version(c)));
+            f.put("device", Fb.s(Build.MANUFACTURER + " " + Build.MODEL)); f.put("android", Fb.s(Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")"));
+            f.put("log", Fb.s(log)); f.put("logLines", Fb.n(Report.lines(log)));
+            if (jpeg != null) f.put("image", Fb.bytes(jpeg));
+            fb(c).create(u.idToken, "reports", f);
+            Log.add("report: sent to the developer (" + Report.lines(log) + " log lines" + (jpeg != null ? ", counter screenshot " + jpeg.length / 1024 + " KB" : ", no screenshot") + ")");
+            return null;
+        } catch (Fb.Error e) { return Fb.explain(e.code); }
+        catch (org.json.JSONException e) { return "error"; }
+    }
     private static String block(Context c, String reason) {
         disabledReason = reason == null ? "" : reason;
         prefs(c).edit().remove("refresh").putBoolean("disabled", true).putString("reason", disabledReason).apply();

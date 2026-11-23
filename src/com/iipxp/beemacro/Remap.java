@@ -23,7 +23,7 @@ public final class Remap {
     public static volatile double uiCal = 0;
     public static double u(int h) { return uiCal > 0 ? uiCal : h / 1440.0; }
     /** Centre-anchored x, middle-anchored y (S9 FE coordinates to this screen). */
-    static double cx(double x, int w, double u) { return w / 2.0 + (x - 1152) * u; }
+    public static double cx(double x, int w, double u) { return w / 2.0 + (x - 1152) * u; }
     static double my(double y, int h, double u) { return h / 2.0 + (y - 720) * u; }
     static int at(int[] px, int w, int h, double x, double y) {
         int xi = Math.max(0, Math.min(w - 1, (int) x)), yi = Math.max(0, Math.min(h - 1, (int) y));
@@ -64,7 +64,7 @@ public final class Remap {
         public Phone(double k, double cx, double top, double inset) { this.k = k; this.cx = cx; this.top = top; this.inset = inset; }
         /** Same layout as the S23 frame the readers were measured on (then the frame is used as it is). */
         public boolean s23(int w, int h) { return w == W && h == H && Math.abs(k - 1) < 0.02 && Math.abs(cx - S23_CX) < 6 && Math.abs(top - S23_TOP) < 5 && Math.abs(inset) < 8; }
-        double cxX(double x) { return cx + (x - S23_CX) * k; }        // centre/top anchored (pills, bar, prompt)
+        public double cxX(double x) { return cx + (x - S23_CX) * k; }        // centre/top anchored (pills, bar, prompt)
         double topY(double y) { return top + (y - S23_TOP) * k; }
         double leftX(double x) { return inset + x * k; }              // left anchored (menu button, buff row, shift lock)
         @Override public String toString() { return String.format(java.util.Locale.US, "scale %.0f%%, centre %.0f, top %.0f, inset %.0f", k * 100, cx, top, inset); }
