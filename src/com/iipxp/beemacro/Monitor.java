@@ -58,7 +58,7 @@ final class Monitor {
     private static final List<Double> calSamples = new ArrayList<>(); private static long calTry;
     static void recalibrate() {
         synchronized (calSamples) { calSamples.clear(); } synchronized (phoneSamples) { phoneSamples.clear(); }
-        Remap.uiCal = 0; Remap.phoneCal = null; calTry = 0; calState = "not measured yet";
+        Remap.uiCal = 0; Remap.phoneCal = null; Remap.phoneLikeW = Remap.phoneLikeH = 0; phoneLike = 0; calTry = 0; calState = "not measured yet";
     }
     /** Auto re-measure: the Honey/Pollen counters are on screen (found anywhere) but the HUD can't be read where it was
      *  measured (UI size changed, rotated, a bad first measurement) -> measure again, no button needed. */
@@ -77,7 +77,13 @@ final class Monitor {
         if (Remap.uiCal > 0 || now - calTry < 3000) return;
         calTry = now;
         double c = Remap.calibrate(f.px, f.w, f.h);
-        if (c <= 0) { calState = "waiting for the honey counter"; return; }
+        if (c <= 0) {
+            // 16:9 phones and small tablets: Roblox may draw the phone HUD there -> read this screen like a phone
+            if (Remap.phoneHud(f.px, f.w, f.h)) {
+                if (++phoneLike >= 3) { Remap.phoneLikeW = f.w; Remap.phoneLikeH = f.h; calTry = 0; phoneLike = 0; Log.add("screen: " + f.w + "x" + f.h + " shows the phone HUD, reading it like a phone"); return; }
+            } else phoneLike = 0;
+            calState = "waiting for the honey counter"; return;
+        }
         synchronized (calSamples) {
             calSamples.add(c);
             if (calSamples.size() < 3) { calState = "measuring (" + calSamples.size() + "/3)"; return; }
@@ -91,6 +97,7 @@ final class Monitor {
             Log.add("screen: UI scale " + calState);
         }
     }
+    private static int phoneLike;
     private static final List<Remap.Phone> phoneSamples = new ArrayList<>();
     /** Phones: find where this phone draws the HUD (3 matching readings), so other phones than the S23 read right. */
     private static void phoneStep(CaptureService.Frame f, long now) {

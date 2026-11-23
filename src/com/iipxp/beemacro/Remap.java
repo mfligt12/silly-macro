@@ -14,7 +14,18 @@ public final class Remap {
     /** The world window's width / height: the Tab S9 FE's screen (2304 x 1440), where every world reader was measured. */
     public static final double WORLD_ASPECT = 1.6;
 
-    public static boolean tablet(int w, int h) { return w > h && w / (double) h < 1.9; }
+    public static boolean tablet(int w, int h) { return w > h && w / (double) h < 1.9 && !(w == phoneLikeW && h == phoneLikeH); }
+    /** A tablet-shaped screen (16:9 and squarer) where Roblox draws the PHONE HUD, so it's read like a phone: set by
+     *  Monitor after phoneHud() agrees 3 times (Discord: a 1921x1085 screen stuck on "waiting for the honey counter"). */
+    public static volatile int phoneLikeW, phoneLikeH;
+    /** On a tablet-shaped frame: the tablet measurement fails but the phone reader finds the counters and reads the game. */
+    public static boolean phoneHud(int[] px, int w, int h) {
+        if (!(w > h && w / (double) h < 1.9) || calibrate(px, w, h) > 0) return false;
+        Phone ph = locatePhone(px, w, h);
+        if (ph == null) return false;
+        Phone keep = phoneCal; phoneCal = ph;
+        try { return Vision.analyze(phone(px, w, h, ph)).screen == Vision.Screen.GAME; } finally { phoneCal = keep; }
+    }
 
     // ---- other screen sizes. Every tablet position below was measured on the Tab S9 FE (2304x1440). Roblox keeps
     // each HUD piece at a fixed spot from its anchor (left edge, screen centre, top, or middle for dialogs), scaled by

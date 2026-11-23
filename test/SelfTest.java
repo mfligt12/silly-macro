@@ -516,6 +516,25 @@ public class SelfTest {
               check(ph != null && Math.abs(ph.k - 1.01) < 0.02 && r.screen == Vision.Screen.GAME && Math.round(r.pollen) == 0,
                     "mic icon over Honey, HUD at 101%: " + (ph == null ? "HUD not found" : ph + " " + r.screen + " bag " + Math.round(r.pollen)));
           } }
+        { // Cight, #help 2026-11-23: a 1921x1085 (16:9) screen where Roblox draws the PHONE HUD; the tablet reader never
+          // measured it ("waiting for the honey counter"). It must switch to the phone reader, and real tablets must not.
+          File ff = new File("test/fixtures/vc_169_phonehud.png");
+          if (ff.exists()) {
+              BufferedImage im = ImageIO.read(ff); int w = im.getWidth(), h = im.getHeight(); int[] q = im.getRGB(0, 0, w, h, null, 0, w);
+              boolean sw = Remap.phoneHud(q, w, h);
+              Remap.phoneLikeW = w; Remap.phoneLikeH = h;
+              Remap.Phone ph = Remap.locatePhone(q, w, h); Remap.phoneCal = ph;
+              Vision.Result r = ph == null ? null : Vision.analyze(Remap.apply(q, w, h));
+              Remap.phoneCal = null; Remap.phoneLikeW = Remap.phoneLikeH = 0;
+              int falseSw = 0;
+              for (String t : new String[]{"tab_field_middle.png", "tab_haste_x4.png", "tab_facing_hive.png", "tab_honey_12digits.png", "tab_menu.png"}) {
+                  File tff = new File("test/fixtures/" + t); if (!tff.exists()) continue;
+                  BufferedImage ti = ImageIO.read(tff); int tw = ti.getWidth(), tht = ti.getHeight();
+                  if (Remap.phoneHud(ti.getRGB(0, 0, tw, tht, null, 0, tw), tw, tht)) falseSw++;
+              }
+              check(sw && r != null && r.screen == Vision.Screen.GAME && Math.round(r.pollen) == 0 && falseSw == 0,
+                    "16:9 screen with the phone HUD switches to the phone reader and reads GAME, bag 0% (" + (r == null ? "not read" : r.screen + " " + Math.round(r.pollen) + "%") + "); Tab S9 FE frames never switch (" + falseSw + ")");
+          } }
         { // foldables' inner screens and other tablets (Android 13+) use the tablet reader: the UI scale is measured from
           // the honey counter, then every reading must match the Tab S9 FE's
           Object[][] tabs = {{"Z Fold3-7 inner", 2176, 1812}, {"Pixel Fold inner", 2208, 1840}, {"Pixel 9/10 Pro Fold inner", 2152, 2076},
