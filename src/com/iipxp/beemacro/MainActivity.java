@@ -632,6 +632,12 @@ public class MainActivity extends Activity {
                 + "counters at the top and measures the scale, centre and camera-cutout inset by itself the first time you're in game.", 12, DIM));
         hudState = tv("", 13, Ui.CYAN); dv.addView(hudState);
         dv.addView(button("Re-measure HUD (after changing Roblox's UI or screen settings)", 0, v -> { Monitor.recalibrate(); toast("Open Bee Swarm in landscape for a few seconds"); }));
+        String tips = brandTips(android.os.Build.MANUFACTURER);
+        if (tips != null) {   // Redmi Note 13, Honor 90 in #whats-your-android: these systems stop background apps and keys
+            LinearLayout bt = card("Your " + android.os.Build.MANUFACTURER + " phone needs these switches");
+            bt.addView(tv(tips, 13, TXT));
+            bt.addView(button("Open Silly Macro's app settings", 0, v -> startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())))));
+        }
         if (Account.configured(this)) {
             LinearLayout ac = card("Account");
             ac.addView(tv("Signed in as " + Account.email(this), 13, TXT));
@@ -738,6 +744,23 @@ public class MainActivity extends Activity {
             startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Share Silly Macro log"));
         }));
         dbg.addView(tv(Profile.NAME + " · " + Profile.PRESET, 11, Ui.FAINT));
+    }
+
+    /** What each phone maker's system blocks, in its own menu names; null = nothing extra (Samsung, Pixel, Motorola). */
+    static String brandTips(String maker) {
+        String m = maker == null ? "" : maker.toLowerCase(java.util.Locale.US);
+        String both = "Do this for Silly Macro AND Shizuku:\n";
+        if (m.contains("xiaomi") || m.contains("redmi") || m.contains("poco"))
+            return both + "• Autostart: ON\n• Battery saver: No restrictions\n• Other permissions → Display pop-up windows while running in the background: ON (the floating panel)\n"
+                    + "• Developer options → USB debugging (Security settings): ON. Without it HyperOS/MIUI blocks the keys. It asks for a Mi account and a SIM card once";
+        if (m.contains("honor") || m.contains("huawei"))
+            return both + "• Battery → App launch: turn off \"Manage automatically\", then turn ON Auto-launch, Secondary launch and Run in background\n"
+                    + "• Battery: turn off Power saving mode while macroing";
+        if (m.contains("oppo") || m.contains("realme") || m.contains("oneplus"))
+            return both + "• Battery → Allow background activity: ON (Battery optimisation: Don't optimise)\n• Auto launch / Allow auto startup: ON";
+        if (m.contains("vivo") || m.contains("iqoo"))
+            return both + "• Battery → Background power consumption: Allow\n• Autostart: ON";
+        return null;
     }
 
     final Runnable tick = new Runnable() { @Override public void run() { refresh(); h.postDelayed(this, 1000); } };

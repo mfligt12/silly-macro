@@ -427,7 +427,10 @@ public class SelfTest {
               {"Xperia 1 III-VII (4K 21:9)", 3840, 1644}, {"Galaxy A 19.5:9 720p", 1560, 720},
               {"Pixel Fold outer (17.4:9)", 2092, 1080}, {"Z Fold3-6 outer (24.5:9)", 2316, 904},
               {"Pixel 9/10, 9-10 Pro Fold outer", 2424, 1080}, {"OnePlus 12R/13R", 2780, 1264}, {"OnePlus Nord 3/4", 2772, 1240},
-              {"Moto Edge 50-60 Pro/Ultra, Edge 2025 (1.5K)", 2712, 1220}, {"OnePlus Open outer", 2484, 1116}, {"Razr 60 Ultra / Razr+ 2025", 2992, 1224}};
+              {"Moto Edge 50-60 Pro/Ultra, Edge 2025 (1.5K)", 2712, 1220}, {"OnePlus Open outer", 2484, 1116}, {"Razr 60 Ultra / Razr+ 2025", 2992, 1224},
+              // #whats-your-android-phone-or-tablet: Galaxy A15/A16/S23 (2340), S21/Redmi Note 13 (2400), S25 Ultra (3120 or
+              // 2340), Moto G 5G 2022/2024 (720p), Pixel 9a (2424) are above; Honor 90 is new
+              {"Honor 90", 2664, 1200}};
           String[] fxs = {"s23_kb_turn0.png", "s23_pepper_field.png", "field_pinetree.png", "haste_x5.png", "hasteon1.png", "hasteoff1.png"};
           java.util.List<int[]> plPx = new java.util.ArrayList<>(); java.util.List<Vision.Result> fo = new java.util.ArrayList<>();
           for (String fx : fxs) { BufferedImage im = ImageIO.read(new File("test/fixtures/" + fx)); int[] q = im.getRGB(0, 0, 2340, 1080, null, 0, 2340); plPx.add(q); fo.add(Vision.analyze(q, 2340, 1080)); }
@@ -461,7 +464,7 @@ public class SelfTest {
         { // foldables' inner screens and other tablets (Android 13+) use the tablet reader: the UI scale is measured from
           // the honey counter, then every reading must match the Tab S9 FE's
           Object[][] tabs = {{"Z Fold3-7 inner", 2176, 1812}, {"Pixel Fold inner", 2208, 1840}, {"Pixel 9/10 Pro Fold inner", 2152, 2076},
-              {"OnePlus Open inner", 2440, 2268}, {"Tab S9 FE", 2304, 1440}, {"Tab S7/S8/S9/S10", 2560, 1600}, {"Tab A8/A9+", 1920, 1200},
+              {"OnePlus Open inner", 2440, 2268}, {"Tab S9 FE", 2304, 1440}, {"Tab S7/S8/S9/S10, Lenovo Idea Tab Plus", 2560, 1600}, {"Tab A8/A9+", 1920, 1200},
               {"Tab S9+/Ultra", 2800, 1752}, {"Pixel Tablet", 2560, 1600}, {"Lenovo/Xiaomi Pad 11 inch", 2000, 1200},
               {"Tab A9 / A7 Lite 8.7 inch", 1340, 800}, {"Tab S9/S10 Ultra", 2960, 1848}, {"Xiaomi Pad 6/7", 2880, 1800},
               {"OnePlus Pad (7:5)", 2800, 2000}, {"4:3 tablets", 2048, 1536}, {"16:9 phone 720p", 1280, 720}, {"16:9 phone 1080p", 1920, 1080}};
