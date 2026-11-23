@@ -52,7 +52,7 @@ public class MacroService extends AccessibilityService {
         return new String[]{String.format(java.util.Locale.US, "🌡 %.1f°C / %.1f°F · %s", c, c * 9 / 5 + 32, name[lvl]), color[lvl]};
     }
     private Button playBtn;
-    private LinearLayout expandedBox, calBox, patternBox, fieldBox;
+    private LinearLayout expandedBox, calBox, patternBox, fieldBox; private android.widget.ScrollView expandedScroll;
     private Runnable fieldShow;
     private Runnable patShow;
 
@@ -461,6 +461,7 @@ public class MacroService extends AccessibilityService {
             if (motion()) { overlay.setAlpha(0); overlay.setScaleX(0.95f); overlay.setScaleY(0.95f); }
             try { wm.addView(overlay, lp); }
             catch (Exception e) { Log.add("overlay: couldn't show the floating panel: " + e); overlay = null; return; }
+            if (App.profile(this).overlayExpanded) fitOnScreen();
             if (motion()) overlay.post(() -> {   // grows out of the corner it is docked to
                 if (overlay == null) return;
                 overlay.setPivotX(lp.x < screen().x / 2 ? 0 : overlay.getWidth()); overlay.setPivotY(0);
@@ -469,12 +470,21 @@ public class MacroService extends AccessibilityService {
             ui.post(tick);
         });
     }
-    /** Expanded panel low on a landscape phone ran off the bottom (Send report hidden, S23 2026-11-23): slide it up. */
+    /** The expanded panel must fit on screen (S23 2026-11-23: Send report hung below the bottom edge) without covering
+     *  the Honey/Pollen counters (the top 18%, which blinded the HUD reader when the panel slid there): move it up to
+     *  that line at most, then let the expanded section scroll in the space left. */
     void fitOnScreen() {
+        if (expandedScroll == null) return;
+        expandedScroll.setLayoutParams(new LinearLayout.LayoutParams(-1, -2));
         ui.postDelayed(() -> {
-            if (overlay == null) return;
-            int sh = screen().y, h = overlay.getHeight();
-            if (lp.y + h > sh) { lp.y = Math.max(0, sh - h); try { wm.updateViewLayout(overlay, lp); } catch (Exception ignored) { } }
+            if (overlay == null || expandedScroll == null) return;
+            int sh = screen().y, h = overlay.getHeight(), minY = Math.round(0.18f * sh);
+            if (lp.y + h > sh) {
+                lp.y = Math.max(Math.min(lp.y, minY), sh - h);
+                int over = lp.y + h - sh;
+                if (over > 0) expandedScroll.setLayoutParams(new LinearLayout.LayoutParams(-1, Math.max(dp(90), expandedScroll.getHeight() - over - dp(4))));
+                try { wm.updateViewLayout(overlay, lp); } catch (Exception ignored) { }
+            }
         }, 250);
     }
     void removeOverlay() { if (overlay != null) { try { wm.removeView(overlay); } catch (Exception ignored) { } overlay = null; ui.removeCallbacks(tick); } }
@@ -493,7 +503,7 @@ public class MacroService extends AccessibilityService {
         LinearLayout head = row();
         TextView title = text("🐝 Silly Macro", 12, 0xFFB9A8FF); title.setTypeface(null, android.graphics.Typeface.BOLD);
         head.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-        Button exp = small("▢", 0xFF2A2F45); exp.setOnClickListener(v -> { p.overlayExpanded = !p.overlayExpanded; App.save(this); if (p.overlayExpanded) { reveal(expandedBox); fitOnScreen(); } else conceal(expandedBox, null); });
+        Button exp = small("▢", 0xFF2A2F45); exp.setOnClickListener(v -> { p.overlayExpanded = !p.overlayExpanded; App.save(this); if (p.overlayExpanded) { reveal(expandedBox); fitOnScreen(); } else conceal(expandedBox, () -> expandedScroll.setLayoutParams(new LinearLayout.LayoutParams(-1, -2))); });
         Button min = small("–", 0xFF2A2F45);
         Button close = small("✕", 0xFF2A2F45);
         Button miniStop = small("⛔", 0xFFD83A4A);
@@ -632,8 +642,7 @@ public class MacroService extends AccessibilityService {
         root.addView(patternBox);
 
         expandedBox = new LinearLayout(this); expandedBox.setOrientation(LinearLayout.VERTICAL);
-        details = text("", 11, 0xFFB8BCD0);
-        expandedBox.addView(details);
+        details = text("", 11, 0xFFB8BCD0);   // added below the buttons: a long buff list must not push them off screen
         Button capOff = small("Stop screen capture", 0xFF2A2F45);
         capOff.setOnClickListener(v -> {
             if (Engine.inst != null && !Engine.inst.finished()) Engine.inst.stop("screen capture stopped");
@@ -655,6 +664,7 @@ public class MacroService extends AccessibilityService {
             rep.setOnClickListener(v -> prepareReport());
             expandedBox.addView(rep); expandedBox.addView(reportBox);
         }
+        expandedBox.addView(details);
         Button calT = small("Calibration keypad", 0xFF2A2F45);
         calT.setOnClickListener(v -> {
             boolean open = calBox.getVisibility() != View.VISIBLE;   // keypad replaces the details so the panel fits on screen
@@ -678,7 +688,8 @@ public class MacroService extends AccessibilityService {
         }
         expandedBox.addView(calBox);
         expandedBox.setVisibility(p.overlayExpanded ? View.VISIBLE : View.GONE);
-        root.addView(expandedBox);
+        expandedScroll = new android.widget.ScrollView(this); expandedScroll.addView(expandedBox);
+        root.addView(expandedScroll);
 
         TextView grip = text("⇲", 14, 0x887C5CFF); grip.setGravity(Gravity.END);
         root.addView(grip);
