@@ -622,11 +622,13 @@ final class Engine implements Runnable {
         if (best != 0) { in.rotate(best > 4 ? best - 8 : best); sleep(450); }
         double s = readFacing();
         if (s < FACING_PAD) {
-            decide("Walking to hive", "Respawned at the central spawn; walking to the hive pad.", String.format(Locale.US, "hive view %.2f", s), "face the hive from the pad", 0.8);
-            run(Moves.natroSpawnToHive(p.hiveSlot, p.moveSpeed), "spawn to hive");
-            sleep(500);
-            s = readFacing();
-            if (s < FACING_PAD) throw new Recover(String.format(Locale.US, "not at the hive pad after walking from spawn (%.2f)", s));
+            // The fixed zoom can't tell the spawn from our own pad: it took "hives not close" as the spawn, walked the
+            // spawn route from the pad and reset, three times in a row (S23 live 2026-11-23, hive already claimed).
+            // The guided reset knows when we own a hive and learns this device's pad zoom: use it from now on.
+            Log.add(String.format(Locale.US, "camera: fixed zoom hive view %.2f is not close enough to tell spawn from pad, using the guided reset on this device", s));
+            p.camGuided = true; App.save(in);
+            guidedCamera();
+            return;
         }
         decideFacing(s, best);
     }
