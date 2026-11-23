@@ -656,7 +656,10 @@ public class MainActivity extends Activity {
         TextView psState = tv(KeyServer.linkOk(p.serverLink) ? "Server link saved ✔" : "No private server link: Open Bee Swarm uses a public server", 12, KeyServer.linkOk(p.serverLink) ? Ui.GREEN : Ui.GOLD);
         LinearLayout pr = row();
         pr.addView(button("Save link", PURPLE, v -> {
-            String u = link.getText().toString().trim().replaceFirst("^http://", "https://").replaceFirst("^https://roblox\\.com/", "https://www.roblox.com/");
+            String u = link.getText().toString().trim();
+            java.util.regex.Matcher um = java.util.regex.Pattern.compile("(https?://\\S+|roblox://\\S+)").matcher(u);   // pasted with text around it ("Join my server: …")
+            if (um.find()) u = um.group(1);
+            u = u.replaceFirst("^http://", "https://").replaceFirst("^https://roblox\\.com/", "https://www.roblox.com/");
             if (!KeyServer.linkOk(u)) { toast("That isn't a Roblox server link (https://www.roblox.com/… or roblox://…)"); return; }
             p.serverLink = u; App.save(this); link.setText(u);
             psState.setText("Server link saved ✔"); psState.setTextColor(Ui.GREEN);

@@ -1138,6 +1138,12 @@ final class Engine implements Runnable {
         }
         if (!night() && SystemClock.uptimeMillis() - unexpectedSince > (r.screen == Vision.Screen.DARK ? 10000 : 4000)) {
             unexpectedSince = 0;
+            // A Bee Swarm window, the chat or a notification over the counters is usually gone in a few seconds:
+            // wait for the game to come back before pausing (Discord: "stops by itself", then "works again").
+            String was = step; step = "Waiting for the Bee Swarm screen to come back (" + r.screen + ")";
+            Vision.Result back = waitFor(this::sure, 30_000);
+            step = was;
+            if (back != null) { Log.add("screen: game back after " + r.screen + ", carrying on"); return back; }
             pause("Unexpected screen: " + r.screen + " — Roblox menu, loading or disconnected?");
             checkpoint();
         }
@@ -1200,6 +1206,14 @@ final class Engine implements Runnable {
             boolean dlg = waitFor(r -> r.screen == Vision.Screen.RESPAWN_DIALOG, 1200) != null || dialogUp();
             if (!dlg) {   // R is no shortcut in Roblox's newer menu: click its Respawn button
                 float[] b = blueTap(true);
+                // The "usual spot" is only safe on the menu we measured (Leave | Respawn | Resume with the blue Resume
+                // where we expect it). Roblox's older menu is Reset | Leave | Resume: there the middle is Leave, and
+                // the Leave dialog looks like the respawn one, so Enter then left the game (Discord: "it leaves the game").
+                Vision.Result mm = Monitor.last;
+                if (b == null && !(mm != null && mm.screen == Vision.Screen.MENU && mm.menuPeople)) {
+                    Log.add("respawn: R gave no dialog and Respawn wasn't found on this menu - not clicking blind (could be Leave)");
+                    in.key(Keys.ESC, 60); sleep(800); return false;
+                }
                 Log.add("respawn: R gave no dialog, clicking Respawn in the menu" + (b != null ? " (found next to Resume)" : " (usual spot)"));
                 in.tap(b != null ? b[0] : T().respawnX, b != null ? b[1] : T().respawnY);
                 long t0 = SystemClock.uptimeMillis();

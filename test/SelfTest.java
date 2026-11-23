@@ -504,6 +504,17 @@ public class SelfTest {
           }
           Remap.phoneCal = null;
           if (n > 0) check(ok == n, "voice-chat user screenshots: " + ok + "/" + n + " read right (scale 94%, GAME, bag, prompt incl. planter = TAP_OTHER)" + why); }
+        { // idksterling FN, 2026-11-23 (1.0.13 said "still measuring this phone's HUD"): 2340x1080, crossed-out mic over
+          // "Honey", bigger HUD (scale ~101%), standing at the hive
+          File ff = new File("test/fixtures/vc_hive_mic.jpg");
+          if (ff.exists()) {
+              BufferedImage im = ImageIO.read(ff); int w = im.getWidth(), h = im.getHeight(); int[] q = im.getRGB(0, 0, w, h, null, 0, w);
+              Remap.Phone ph = Remap.locatePhone(q, w, h); Vision.Result r = null;
+              if (ph != null) { Remap.phoneCal = ph; r = Vision.analyze(Remap.apply(q, w, h)); }
+              Remap.phoneCal = null;
+              check(ph != null && Math.abs(ph.k - 1.01) < 0.02 && r.screen == Vision.Screen.GAME && Math.round(r.pollen) == 0,
+                    "mic icon over Honey, HUD at 101%: " + (ph == null ? "HUD not found" : ph + " " + r.screen + " bag " + Math.round(r.pollen)));
+          } }
         { // foldables' inner screens and other tablets (Android 13+) use the tablet reader: the UI scale is measured from
           // the honey counter, then every reading must match the Tab S9 FE's
           Object[][] tabs = {{"Z Fold3-7 inner", 2176, 1812}, {"Pixel Fold inner", 2208, 1840}, {"Pixel 9/10 Pro Fold inner", 2152, 2076},

@@ -42,6 +42,11 @@ Stop with *Stop* on the panel; the red button is an emergency stop that releases
 | Spins or keeps resetting at the hive | Camera Mode → Classic, and confirm your hive slot (it must be free). |
 | Floating panel gone | Home step 5 brings it back (or Settings → Show floating overlay). |
 | "Started, but no answer yet" | Restart Shizuku, press step 2 again. On cloud phones the keyboard can't be created at all. |
+| "App blocked to protect your device" (Play Protect) | Play Store → profile → Play Protect → ⚙ → pause *Scan apps*, install, then turn it back on. The app is open source; Play Protect flags any app that uses accessibility + screen capture. |
+| Shizuku: "Wireless debugging" missing | Android 12 or older (or some Huawei phones): not supported. The macro needs Android 13+. |
+| Shizuku pairing notification does nothing (Xiaomi/Redmi) | Developer options → turn on *USB debugging (Security settings)*, allow Shizuku's notifications, then pair again from the split-screen notification. |
+| Walks to the wrong field / stops just before a gate | Set **Move speed** to the number in Bee Swarm's stats (without Haste). Routes are walked by distance, so a wrong speed ends short or long. |
+| Pauses with "Unexpected screen" | A Bee Swarm window or the chat covered the counters for over 30 s. Close it and press Start (Resume). |
 | Slows down or stops on long runs | Settings → Overnight → *Battery settings* → Unrestricted. Keep the device cool and plugged in. |
 
 Reporting a bug: Settings → Debug → **Share log**, and paste it with a screenshot in #bug-reports. The log hides your email.
@@ -51,6 +56,9 @@ Reporting a bug: Settings → Debug → **Share log**, and paste it with a scree
 - All 17 of Natro's gathering fields can be picked, but **Pine Tree Forest is the only one tested live**; the others use Natro's routes and are untested. Quests, Wealth Clock and token collection aren't in yet.
 - Phones are measured automatically; on small tablets and 16:9 phones the honey digits are too small to measure, so a default scale based on the screen height is used.
 - Reading the game's own "…from Pine Tree Forest" messages is tablet-only so far.
+- Rejoining after a disconnect uses your private server link, or opens Bee Swarm's public game without one; joining a specific public server isn't possible.
+- Hive slots 1-3 are the most tested; slots 4-6 use Natro's walk from the spawn and are less tested.
+- Roblox's older in-game menu (Reset | Leave | Resume) is detected less reliably: the macro now refuses to click a menu button it can't see rather than risk pressing Leave.
 - The sprinkler and the tool rely on the keyboard + mouse (Shizuku); there's no touch-only mode.
 
 ## What it does and doesn't do
