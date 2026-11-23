@@ -322,7 +322,7 @@ final class Engine implements Runnable {
         phase("To hive", "nav"); nav = "Natro path: " + fname + " → hive pads (walk)";
         // the walk ends the moment our own pad's "Make Honey" shows (only our hive shows it): live, a speed boost the
         // buff row didn't show made the route run on past the pad, and the search then went the wrong way
-        java.util.function.BooleanSupplier atPad = () -> { Vision.Result r = Monitor.last; return r != null && SystemClock.uptimeMillis() - Monitor.lastTime < 400 && ownHive(r); };
+        java.util.function.BooleanSupplier atPad = () -> { Vision.Result r = Monitor.last; return r != null && SystemClock.uptimeMillis() - Monitor.lastTime < 400 && ownPadWithPollen(r); };
         if (run(pine ? Moves.natroPineHome(p.hiveSlot, p.moveSpeed) : route("wf-" + p.field), "walk home", atPad)) Log.add("hive: own pad's prompt seen on the way, stopped the walk there");
         nav = "Finding own hive pad";
         natroFindHive();
@@ -492,14 +492,21 @@ final class Engine implements Runnable {
     }
 
     private boolean ownHive(Vision.Result x) { return promptKnown(x) && (x.prompt == Vision.Prompt.TAP_BLUE || x.prompt == Vision.Prompt.TAP_RED || x.prompt == Vision.Prompt.BANNER_BLUE); }
+    /** Our pad after farming: "Make Honey" / "Stop Making Honey". The blue empty-bag banner counts only when the bag
+     *  really reads empty: S23 2026-11-23 (no-HUD test) the hive sweep stopped at a pad showing the banner with pollen
+     *  in the bag, skipped converting and respawned, losing the bag. In no-HUD mode (bag unknown) only Make Honey counts. */
+    private boolean ownPadWithPollen(Vision.Result x) {
+        return promptKnown(x) && (x.prompt == Vision.Prompt.TAP_BLUE || x.prompt == Vision.Prompt.TAP_RED
+                || (x.prompt == Vision.Prompt.BANNER_BLUE && bagKnown(x) && x.pollen < 1));
+    }
 
     /** Natro nm_findHiveSlot: if our hive prompt isn't up, walk Left up to 15 s until it is; confirm 0.5 s later and
      *  step back Right 1.5 tiles if overrun (≤10 times). */
     private void natroFindHive() {
         // a frame older than 0.4 s doesn't count: at walking speed that is 3 tiles of hive row ago
-        java.util.function.BooleanSupplier at = () -> { Vision.Result r = Monitor.last; return r != null && SystemClock.uptimeMillis() - Monitor.lastTime < 400 && ownHive(r); };
+        java.util.function.BooleanSupplier at = () -> { Vision.Result r = Monitor.last; return r != null && SystemClock.uptimeMillis() - Monitor.lastTime < 400 && ownPadWithPollen(r); };
         Vision.Result now = waitFor(this::sure, 2000);
-        if (now == null || !ownHive(now)) {
+        if (now == null || !ownPadWithPollen(now)) {
             // Natro holds Left up to 15 s; the route ends next to the pad (and now stops on it), so 6 s left (~50 tiles,
             // five hives), then back right as far again and on: a pad passed on the way is found from the other side
             boolean found = in.holdUntil(MacroService.set(new Moves.Key[]{Moves.Key.A}), 6_000, at);
@@ -537,7 +544,7 @@ final class Engine implements Runnable {
         int hits = 0;
         for (int i = 0; i < 3 && hits < 2; i++) {
             Vision.Result r = Monitor.fresh(SystemClock.uptimeMillis(), 900);
-            if (r != null && sure(r) && ownHive(r)) hits++; else hits = 0;
+            if (r != null && sure(r) && ownPadWithPollen(r)) hits++; else hits = 0;
         }
         return hits >= 2;
     }
@@ -1352,7 +1359,7 @@ final class Engine implements Runnable {
     }
 
     private void convert() {
-        if (noHudNow && waitFor(x -> bagKnown(x) && promptKnown(x), 2000) == null) { convertTimed(); return; }
+        if (noHudNow && (p.noHudForced || waitFor(x -> bagKnown(x) && promptKnown(x), 2000) == null)) { convertTimed(); return; }
         Vision.Result r = waitFor(x -> bagKnown(x) && promptKnown(x), 4000);
         if (r == null) { pause("Can't read backpack/hive prompt at hive"); checkpoint(); throw new Recover("convert: unreadable"); }
         // the bag bar rounds a big bag down to 0%; the game's own "Make Honey" prompt means there is pollen to convert
