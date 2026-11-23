@@ -336,7 +336,8 @@ final class Engine implements Runnable {
         phase("To hive", "nav"); nav = "Natro path: " + fname + " → hive pads (walk)";
         // the walk ends the moment our own pad's "Make Honey" shows (only our hive shows it): live, a speed boost the
         // buff row didn't show made the route run on past the pad, and the search then went the wrong way
-        java.util.function.BooleanSupplier atPad = () -> { Vision.Result r = Monitor.last; return r != null && SystemClock.uptimeMillis() - Monitor.lastTime < 400 && ownPadWithPollen(r); };
+        stopKeys = null; padSeenAt = 0;
+        java.util.function.BooleanSupplier atPad = () -> { Vision.Result r = Monitor.last; long ft = Monitor.lastTime; boolean ok = r != null && SystemClock.uptimeMillis() - ft < 400 && ownPadWithPollen(r); if (ok) padSeenAt = ft; return ok; };
         if (run(pine ? Moves.natroPineHome(p.hiveSlot, p.moveSpeed) : route("wf-" + p.field), "walk home", atPad)) Log.add("hive: own pad's prompt seen on the way, stopped the walk there");
         nav = "Finding own hive pad";
         natroFindHive();
@@ -522,28 +523,34 @@ final class Engine implements Runnable {
      *  step back Right 1.5 tiles if overrun (≤10 times). */
     private void natroFindHive() {
         // a frame older than 0.4 s doesn't count: at walking speed that is 3 tiles of hive row ago
-        java.util.function.BooleanSupplier at = () -> { Vision.Result r = Monitor.last; return r != null && SystemClock.uptimeMillis() - Monitor.lastTime < 400 && ownPadWithPollen(r); };
+        java.util.function.BooleanSupplier at = () -> { Vision.Result r = Monitor.last; long ft = Monitor.lastTime; boolean ok = r != null && SystemClock.uptimeMillis() - ft < 400 && ownPadWithPollen(r); if (ok) padSeenAt = ft; return ok; };
         Vision.Result now = waitFor(this::sure, 2000);
         if (now == null || !ownPadWithPollen(now)) {
             // Natro holds Left up to 15 s; the route ends next to the pad (and now stops on it), so 6 s left (~50 tiles,
             // five hives), then back right as far again and on: a pad passed on the way is found from the other side
             boolean found = in.holdUntil(MacroService.set(new Moves.Key[]{Moves.Key.A}), 6_000, at);
+            if (found) { stopKeys = new Moves.Key[]{Moves.Key.A}; stoppedAt = SystemClock.uptimeMillis(); }
             checkpoint();
             if (!found && p.navGuard) {
                 decide("Finding hive", "Own hive not found to the left; searching right.", "no hive prompt for 6 s", "reset if not found", 0.5);
                 found = in.holdUntil(MacroService.set(new Moves.Key[]{Moves.Key.D}), 16_000, at);
+                if (found) { stopKeys = new Moves.Key[]{Moves.Key.D}; stoppedAt = SystemClock.uptimeMillis(); }
                 checkpoint();
             }
             if (!found) throw new Recover("own hive not found along the hive row");
         }
         if (padHere()) { Log.add("hive: found own pad"); return; }
+        if (backToPad()) return;
         // Slid past the pad before the key came up (screen frames arrive ~8 a second, so the stop is late; with Haste
         // later still). Natro steps back 1.5 tiles at a time, which here jumped over the pad both ways until it gave
         // up. Sweep back in short Haste-corrected steps instead, checking a fresh frame after each, then the other way.
         // Live: it had stopped SHORT of the pad (found after 6.6 tiles further left), which is also why Natro's
         // right-only steps used to end in "pad overrun". So: a little further left first, then right, then left again.
         double moved = 0;
-        Moves.Key[] legs = {Moves.Key.A, Moves.Key.D, Moves.Key.A}; double[] reaches = {3, 8, 10};
+        // start back the way we came when we know it (we overshot); otherwise the old order (stopped short: further on)
+        boolean cameLeft = stopKeys != null && java.util.Arrays.asList(stopKeys).contains(Moves.Key.A), cameRight = stopKeys != null && java.util.Arrays.asList(stopKeys).contains(Moves.Key.D);
+        Moves.Key first = cameLeft ? Moves.Key.D : cameRight ? Moves.Key.A : Moves.Key.A;
+        Moves.Key[] legs = {first, Moves.flip(first), first}; double[] reaches = {3, 8, 10};
         for (int leg = 0; leg < legs.length; leg++) {
             Moves.Key k = legs[leg]; double reach = reaches[leg];
             for (double d = 0; d < reach; d += 0.6) {
@@ -553,6 +560,22 @@ final class Engine implements Runnable {
             }
         }
         throw new Recover("own hive pad overrun");
+    }
+    /** We stopped because a frame showed our pad's prompt, but that frame was taken 0.2-0.4 s before the keys came up,
+     *  so we kept walking past the pad, and the 0.6-tile sweep then stuttered along the hives (Discord). Walk straight
+     *  back for exactly that long (same speed both ways), then check the pad once. */
+    private boolean backToPad() {
+        if (stopKeys == null || padSeenAt <= 0 || stoppedAt <= padSeenAt) return false;
+        long over = Math.min(1200, stoppedAt - padSeenAt);
+        if (over < 80) return false;
+        java.util.List<Moves.Key> back = new java.util.ArrayList<>();   // walking keys only (a route step may hold Space)
+        for (Moves.Key k : stopKeys) if (k == Moves.Key.W || k == Moves.Key.A || k == Moves.Key.S || k == Moves.Key.D) back.add(Moves.flip(k));
+        if (back.isEmpty()) return false;
+        Log.add("hive: walked on " + over + " ms past our pad's prompt, stepping straight back " + back);
+        in.hold(MacroService.set(back.toArray(new Moves.Key[0])), over);
+        checkpoint();
+        if (padHere()) { Log.add("hive: back on our pad"); return true; }
+        return false;
     }
     /** Standing on our pad: the prompt on a frame taken after we stopped (two tries, frames arrive ~8 a second). */
     private boolean padHere() {
@@ -734,13 +757,16 @@ final class Engine implements Runnable {
                 Moves.Step s = steps.get(i);
                 step = what + " " + (i + 1) + "/" + steps.size() + ": " + s;
                 exec(s);
-                if (walkStopped || (stopAt != null && stopAt.getAsBoolean())) { in.emergencyRelease(); in.arm(); return true; }
+                if (walkStopped || (stopAt != null && stopAt.getAsBoolean())) { in.emergencyRelease(); in.arm(); stopKeys = s.keys; stoppedAt = SystemClock.uptimeMillis(); return true; }
                 guardBag(watchScreen());
             }
             return false;
         } finally { walkStop = null; }
     }
     private volatile java.util.function.BooleanSupplier walkStop; private volatile boolean walkStopped;
+    /** The last walk that stopped on our pad's prompt: the keys it held, when the keys came up, and the time of the frame
+     *  that showed the prompt (Monitor.lastTime). The frame is 0.2-0.4 s old by then, so we stand past the pad. */
+    private Moves.Key[] stopKeys; private long stoppedAt, padSeenAt;
 
     // ------------------------------------------------------------------ screen guard (keyboard trip)
     static final double STILL = 6;          // motion below this = the world isn't moving (walking measured 39-93)
@@ -1477,13 +1503,28 @@ final class Engine implements Runnable {
         resetBagWatch();
         prompt();
         stats.conversions++;
-        Log.add("convert: no-HUD, pressed E and converting for " + p.noHudConvertSec + " s");
+        Log.add("convert: no-HUD, pressed E and converting for " + p.noHudConvertSec + " s (longer while 'Stop Making Honey' shows)");
         hook("convert", "🍯 Converting (no-HUD)", "Hive slot " + p.hiveSlot + " · " + p.noHudConvertSec + " s", Webhook.CYAN, true);
-        long t0 = SystemClock.uptimeMillis();
-        while (SystemClock.uptimeMillis() - t0 < p.noHudConvertSec * 1000L) {
-            step = "Converting (no-HUD) · " + (p.noHudConvertSec - (SystemClock.uptimeMillis() - t0) / 1000) + " s left";
+        // The timer alone cut big bags short: the next trip's reset walked off the pad mid-conversion (Discord: "it
+        // resets after it starts converting"). Where the prompt can be read (no-HUD switched on, counters fine), wait
+        // while "Stop Making Honey" shows and finish when "Make Honey" / the empty-bag banner is back; the timer
+        // remains for screens where nothing can be read.
+        long t0 = SystemClock.uptimeMillis(); boolean sawRed = false, pressedAgain = false; int doneFrames = 0;
+        while (true) {
+            long el = SystemClock.uptimeMillis() - t0;
+            Vision.Result r = Monitor.last;
+            boolean fresh = r != null && SystemClock.uptimeMillis() - Monitor.lastTime < 1500 && promptKnown(r);
+            if (fresh && r.prompt == Vision.Prompt.TAP_RED) { sawRed = true; doneFrames = 0; }
+            else if (fresh && sawRed && (r.prompt == Vision.Prompt.TAP_BLUE || r.prompt == Vision.Prompt.BANNER_BLUE)) doneFrames++;
+            else if (fresh && !sawRed && !pressedAgain && el > 5000 && r.prompt == Vision.Prompt.TAP_BLUE) { pressedAgain = true; Log.add("convert: no-HUD, honey making didn't start, pressing E again"); prompt(); }
+            if (sawRed && doneFrames >= 3) { Log.add("convert: no-HUD, done in " + Stats.fmt(el) + " ('Make Honey' is back)"); break; }
+            boolean stillMaking = sawRed && doneFrames == 0;
+            if (el >= p.noHudConvertSec * 1000L && !stillMaking) break;
+            if (el >= p.convertTimeoutSec * 1000L) { Log.add("convert: no-HUD, time limit reached while still making honey, moving on"); break; }
+            step = stillMaking && el >= p.noHudConvertSec * 1000L ? "Converting (no-HUD) · still making honey, waiting"
+                 : "Converting (no-HUD) · " + Math.max(0, p.noHudConvertSec - el / 1000) + " s left";
             watchScreen(); sleep(1000);
-            if (!noHudNow) { Log.add("convert: counters readable again, checking the bag"); break; }
+            if (!noHudNow && !p.noHudForced) { Log.add("convert: counters readable again, checking the bag"); break; }
         }
         if (balloonDue()) convertBalloon();
     }
