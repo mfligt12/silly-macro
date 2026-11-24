@@ -116,6 +116,16 @@ public final class Moves {
         return m.out;
     }
 
+    /** Hive pad `from` -> hive pad `to` without a respawn (camera still facing the hives): the spawn walk to `from`
+     *  backwards, then the spawn walk to `to`. Used when a hive is taken: respawning and resetting the camera for every
+     *  slot made one claim take minutes (S23 2026-11-23). */
+    public static List<Step> natroHiveToHive(int from, int to, double ms) {
+        List<Step> back = natroSpawnToHive(from, ms), out = new ArrayList<>();
+        for (int i = back.size() - 1; i >= 0; i--) { Step s = back.get(i); out.add(new Step(s.type, flip(s.keys), s.tiles, s.count, s.label)); }
+        out.addAll(natroSpawnToHive(to, ms));
+        return out;
+    }
+
     /** paths/gtf-pinetree.ahk, walk branch: from the ramp (after natroToRamp) on foot to Pine Tree Forest. The camera
      *  ends turned 180° from the hive, the same pose the cannon branch ends in. */
     /** Natro gtp-mountaintop walk (after natroToRamp), then nm_Mondo's 14 tiles Right to stand off the field. */

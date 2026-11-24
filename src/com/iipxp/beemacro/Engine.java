@@ -235,7 +235,10 @@ final class Engine implements Runnable {
     /** After the camera faces a hive: claim it if it is free (after a rejoin you own no hive). Overnight, if this
      *  slot is taken, try the others from the central spawn. */
     private void ensureHive() {
-        Vision.Result r = waitFor(x -> promptKnown(x), 3000);
+        // the pad's prompt can take a moment after the camera reset: wait for one before deciding (an early NONE with the
+        // auto-slot switch off went to the field with no hive, and the next trips reset over and over)
+        Vision.Result r = waitFor(x -> promptKnown(x) && x.prompt != Vision.Prompt.NONE, 4000);
+        if (r == null) r = waitFor(x -> promptKnown(x), 1000);
         if (r != null && ownHive(r)) { if (r.prompt != Vision.Prompt.BANNER_BLUE) ownsHive = true; return; }
         if (r != null && r.prompt == Vision.Prompt.TAP_CLAIM) { claimHere(); return; }
         if (!p.autoHiveSlot || ownsHive) return;   // we own one elsewhere: respawning brings us to it
@@ -249,10 +252,14 @@ final class Engine implements Runnable {
         int[] order = Profile.slotOrder(start);
         for (int i = 1; i < order.length; i++) {
             int s = order[i];
-            Log.add("hive: slot " + p.hiveSlot + " is taken, trying slot " + s);
-            decide("Finding a free hive", "Hive slot " + start + " belongs to someone else", "no Claim Hive / own-hive prompt at slot " + p.hiveSlot, "try slot " + s, 0.8);
-            p.hiveSlot = s; respawn(); alignCamera();   // not saved: your chosen slot is tried first again next run / server
-            Vision.Result q = waitFor(x -> promptKnown(x), 3000);
+            Log.add("hive: slot " + p.hiveSlot + " is taken, walking along to slot " + s);
+            decide("Finding a free hive", "Hive slot " + start + " belongs to someone else", "no Claim Hive / own-hive prompt at slot " + p.hiveSlot, "walk to slot " + s, 0.8);
+            // walk pad to pad with the camera as it is: a respawn + camera reset per slot made one claim take minutes
+            run(Moves.natroHiveToHive(p.hiveSlot, s, p.moveSpeed), "to hive slot " + s);
+            p.hiveSlot = s;   // not saved: your chosen slot is tried first again next run / server
+            sleep(600);
+            Vision.Result q = waitFor(x -> promptKnown(x) && x.prompt != Vision.Prompt.NONE, 4000);
+            if (q == null) q = waitFor(x -> promptKnown(x), 1500);
             if (q != null && ownHive(q)) { autoSlotNote(start, s); return; }
             if (q != null && q.prompt == Vision.Prompt.TAP_CLAIM) { claimHere(); autoSlotNote(start, s); return; }
         }
@@ -650,6 +657,14 @@ final class Engine implements Runnable {
         if (bestTurn != 0) { in.rotate(bestTurn > 4 ? bestTurn - 8 : bestTurn); sleep(450); }
         Log.add(String.format(Locale.US, "camera: hive row %.2f after %d turns, zooming in by eye", topRow, bestTurn));
         double f = zoomToHive();
+        if (f < FACING_SPAWN && zoomPeak >= FACING_PAD) {
+            // the view after stepping back to the best zoom read nothing (S23 live: best 0.67, "now 0.00") and the whole
+            // reset was thrown away with a respawn: zoom in to the hives once more first
+            Log.add(String.format(Locale.US, "camera: best view %.2f was lost stepping back to it, zooming in again", zoomPeak));
+            for (int i = 0; i < 20; i++) { in.key(android.view.KeyEvent.KEYCODE_O, 60); SystemClock.sleep(70); }
+            sleep(900);
+            f = zoomToHive();
+        }
         // Where did the respawn put us? Bee Swarm respawns you on your hive's pad when you own one, else at the central
         // spawn (live: every spawn landing came before "claimed slot 3"). Far hives = the spawn, but how far depends on
         // the device: tablet pad step 1 / spawn step 3, the S23's pad ~5. A fixed "step 3+" sent phones standing on
@@ -691,6 +706,7 @@ final class Engine implements Runnable {
 
     /** Zoom in one step at a time while the hive view gets better; stop just after its peak and step back to it. */
     private int zoomStep;   // zoom-in steps from fully out to the best hive view, set by zoomToHive
+    private double zoomPeak;   // the best hive view zoomToHive saw on the way in
     private double zoomToHive() {
         double best = -1; int bestStep = 0, step = 0;
         for (step = 1; step <= 16; step++) {
@@ -712,6 +728,7 @@ final class Engine implements Runnable {
         double f = readFacing();
         for (int i = 0; i < 2 && f < 0.8 * best; i++) { sleep(300); f = Math.max(f, readFacing()); }
         Log.add(String.format(Locale.US, "camera: best hive view %.2f at zoom step %d (now %.2f)", best, bestStep, f));
+        zoomPeak = best;
         return f >= 0.8 * best ? Math.max(f, best) : f;
     }
 

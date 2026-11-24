@@ -26,6 +26,16 @@ import java.util.regex.Pattern;
 public class SelfTest {
     static int fails = 0;
     static void check(boolean ok, String what) { System.out.println((ok ? "PASS  " : "FAIL  ") + what); if (!ok) fails++; }
+    /** Net {right, forward} of a walk's held keys (diagonals split evenly between the two axes). */
+    static double[] net(java.util.List<Moves.Step> steps) {
+        double x = 0, y = 0;
+        for (Moves.Step s : steps) {
+            if (s.keys == null || s.keys.length == 0) continue;
+            double share = s.count / Math.sqrt(s.keys.length);
+            for (Moves.Key k : s.keys) { if (k == Moves.Key.D) x += share; if (k == Moves.Key.A) x -= share; if (k == Moves.Key.W) y += share; if (k == Moves.Key.S) y -= share; }
+        }
+        return new double[]{x, y};
+    }
 
     static Vision.Result see(String f) throws Exception {
         BufferedImage im = ImageIO.read(new File("test/fixtures/" + f));
@@ -516,6 +526,14 @@ public class SelfTest {
               check(ph != null && Math.abs(ph.k - 1.01) < 0.02 && r.screen == Vision.Screen.GAME && Math.round(r.pollen) == 0,
                     "mic icon over Honey, HUD at 101%: " + (ph == null ? "HUD not found" : ph + " " + r.screen + " bag " + Math.round(r.pollen)));
           } }
+        { // taken hive: walk pad to pad (no respawn). Its net movement must equal spawn->`to` minus spawn->`from`, for
+          // every pair of slots
+          boolean ok = true; StringBuilder why = new StringBuilder();
+          for (int sa = 1; sa <= 6; sa++) for (int sb = 1; sb <= 6; sb++) {
+              double[] w = net(Moves.natroHiveToHive(sa, sb, 28)), ta = net(Moves.natroSpawnToHive(sa, 28)), tb = net(Moves.natroSpawnToHive(sb, 28));
+              if (Math.abs(w[0] - (tb[0] - ta[0])) > 1 || Math.abs(w[1] - (tb[1] - ta[1])) > 1) { ok = false; why.append(" ").append(sa).append("->").append(sb); }
+          }
+          check(ok, "taken hive: walking pad to pad lands where the spawn walk to the new slot would, all 36 slot pairs" + why); }
         { // no-HUD mode: the counter reader never blocks Start; portrait, black screens and menus still do
           boolean ok = true; StringBuilder why = new StringBuilder();
           java.util.function.BiFunction<String, Boolean, Vision.Result> read = (f, phone) -> {
