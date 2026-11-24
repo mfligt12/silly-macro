@@ -257,10 +257,23 @@ final class Engine implements Runnable {
         if (r == null) r = waitFor(x -> promptKnown(x), 1000);
         if (r != null && ownHive(r)) { if (r.prompt != Vision.Prompt.BANNER_BLUE) ownsHive = true; return; }
         if (r != null && r.prompt == Vision.Prompt.TAP_CLAIM) { claimHere(); return; }
+        // Unreadable prompt and no hive yet: it went straight to the field with none (Discord 2026-11-24: "camera reset
+        // then straight to Pine Tree with no hive claimed"). E claims a free pad and does nothing harmful on our own, so
+        // press it; with the counters readable, confirm it or start over rather than farm with nowhere to convert.
+        if (r == null && !ownsHive) {
+            Log.add("hive: prompt not readable at slot " + p.hiveSlot + ", pressing E to claim it if it's free");
+            prompt(); sleep(2500);
+            if (noHudNow) { ownsHive = true; stats.hiveClaims++; return; }   // no-HUD: prompts can't be read, carry on
+            Vision.Result c = waitFor(x -> promptKnown(x), 5000);
+            if (c != null && ownHive(c)) { ownsHive = true; stats.hiveClaims++; Log.add("hive: claimed slot " + p.hiveSlot); return; }
+            if (c != null && c.prompt == Vision.Prompt.TAP_CLAIM) { claimHere(); return; }
+            if (c == null) throw new Recover("no hive prompt in sight at slot " + p.hiveSlot + " after the camera reset: starting over instead of farming with no hive");
+            r = c;   // readable now: fall through to the taken-slot handling
+        }
         if (!p.autoHiveSlot || ownsHive) return;   // we own one elsewhere: respawning brings us to it
         // Taken = the prompt is readable and it's neither our hive nor Claim Hive, on a second look too (a walk that
-        // missed the pad reads NONE once; give the banner time). Unreadable = don't guess, keep the slot.
-        if (r == null) { Log.add("hive: prompt not readable at slot " + p.hiveSlot + ", keeping it"); return; }
+        // missed the pad reads NONE once; give the banner time).
+        if (r == null) return;
         sleep(2000);
         Vision.Result r2 = waitFor(x -> promptKnown(x), 3000);
         if (r2 == null || ownHive(r2) || r2.prompt == Vision.Prompt.TAP_CLAIM) { if (r2 != null && r2.prompt == Vision.Prompt.TAP_CLAIM) claimHere(); return; }
