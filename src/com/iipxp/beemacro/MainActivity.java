@@ -770,6 +770,11 @@ public class MainActivity extends Activity {
         swShow.run();
         swc.addView(button("Set to " + tgt, PURPLE, v ->
             new Thread(() -> { String why = ScreenWidth.apply(this); runOnUiThread(() -> { toast(why != null ? why : "Set to " + tgt + ". Close and reopen Roblox."); swShow.run(); }); }).start()));
+        swc.addView(button("Test my resolution", 0, v -> {
+            String r = ScreenWidth.report(this);
+            new android.app.AlertDialog.Builder(this).setTitle("Your screen").setMessage(r + "\n\nOpen Bee Swarm sideways for a few seconds and test again to see the HUD measured.")
+                    .setPositiveButton("OK", null).show();
+        }));
         swc.addView(button("Open Developer options", 0, v -> {
             try { startActivity(new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)); } catch (Exception e) { toast("Turn on Developer options first (Build number ×7)"); }
         }));

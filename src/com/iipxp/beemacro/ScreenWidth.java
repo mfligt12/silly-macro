@@ -60,6 +60,25 @@ final class ScreenWidth {
         Log.add("screen: " + (tab ? "S9 FE" : "S23") + " resolution " + (on ? "on (" + w + "x" + h + ", " + dpi + " dpi)" : "off (own size, " + own + " dpi)"));
         return null;
     }
+    /** "Test my resolution": what this screen runs at now against what the macro expects (also written to the log, so
+     *  Send report carries it). Native = the panel's own pixels; now = after any resolution change (wm size). */
+    static String report(Context c) {
+        Display d = ((WindowManager) c.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
+        Display.Mode m = d.getMode();
+        int nw = Math.max(m.getPhysicalWidth(), m.getPhysicalHeight()), nh = Math.min(m.getPhysicalWidth(), m.getPhysicalHeight());
+        DisplayMetrics dm = new DisplayMetrics(); d.getRealMetrics(dm);
+        int w = Math.max(dm.widthPixels, dm.heightPixels), h = Math.min(dm.widthPixels, dm.heightPixels), dpi = dm.densityDpi;
+        boolean tab = tablet(c); int sw = current(c), tgt = target(c);
+        int rw = tab ? 2304 : 2340, rh = tab ? 1440 : 1080, rdpi = tab ? 280 : 480;
+        boolean ref = w == rw && h == rh && dpi == rdpi;
+        String r = (tab ? "Tablet" : "Phone") + " · " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL
+                + "\nScreen now: " + w + " × " + h + " at " + dpi + " dpi" + (w != nw || h != nh ? " (its own: " + nw + " × " + nh + ")" : " (its own size)")
+                + "\nSmallest width: " + sw + " dp " + (sw == tgt ? "✓ " + (tab ? "recommended " : "required ") + tgt : (tab ? "⚠ recommended " : "✗ required ") + tgt)
+                + "\n" + (tab ? "Tab S9 FE" : "S23") + " screen (" + rw + " × " + rh + ", " + rdpi + " dpi): " + (ref ? "✓ same as the macro was built on" : "not the same (" + (sw == tgt ? "fine: the width matches" : "set the width first") + ")")
+                + "\nHUD: " + Monitor.calState;
+        Log.add("resolution test: " + r.replace("\n", " · "));
+        return r;
+    }
     /** The reference screen this device is matched to, for labels. */
     static String reference(Context c) { return tablet(c) ? "Tab S9 FE resolution (2304 × 1440, 280 dpi)" : "S23 resolution (1080 × 2340)"; }
 
