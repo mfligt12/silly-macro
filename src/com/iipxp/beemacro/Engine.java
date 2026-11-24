@@ -1315,7 +1315,7 @@ final class Engine implements Runnable {
         }
         return null;
     }
-    private boolean sure(Vision.Result r) { return Vision.playable(r, noHudNow) && (r.screen != Vision.Screen.GAME || r.screenConf >= p.minConfidence); }
+    private boolean sure(Vision.Result r) { return Vision.sure(r, noHudNow, p.minConfidence); }
     private boolean bagKnown(Vision.Result r) { return sure(r) && r.pollenConf >= p.minConfidence; }
     private boolean promptKnown(Vision.Result r) { return sure(r) && r.promptConf >= p.minConfidence; }
 

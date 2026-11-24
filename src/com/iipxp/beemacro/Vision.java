@@ -83,6 +83,11 @@ public final class Vision {
     public static boolean playable(Result r, boolean noHud) {
         return r != null && (r.screen == Screen.GAME || (noHud && r.screen == Screen.UNKNOWN && r.w > r.h && r.meanLum >= 18));
     }
+    /** Sure enough of the game screen to act. No-HUD mode doesn't need the HUD read well, so a weakly recognised game
+     *  screen counts too (S23 2026-11-24: GAME at 77% was rejected while an unrecognised one passed → 4 failed respawns). */
+    public static boolean sure(Result r, boolean noHud, double minConf) {
+        return playable(r, noHud) && (noHud || r.screen != Screen.GAME || r.screenConf >= minConf);
+    }
     public enum Mode { HUD, NO_HUD, BLOCKED }
     /** How Start begins: with the HUD when it's read, in no-HUD mode when it isn't (or when forced), never for portrait,
      *  a black screen or an open menu (those have their own fixes). */

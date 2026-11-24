@@ -567,6 +567,11 @@ public class SelfTest {
           Vision.Result dim = new Vision.Result(); dim.w = 2340; dim.h = 1080; dim.meanLum = 5;   // UNKNOWN but black: not playable
           ok &= Vision.startMode(true, dark, 0.6, true) == Vision.Mode.BLOCKED && !Vision.playable(dim, true) && Vision.startMode(false, null, 0.6, true) == Vision.Mode.BLOCKED;
           check(ok, "no-HUD mode: HUD read = full mode, unread counters = no-HUD (or forced), portrait/menu/black screen still blocked" + why); }
+        { // S23 2026-11-24: no-HUD mode, game recognised at 77% after a respawn was "not readable" 4x
+          Vision.Result g = new Vision.Result(); g.screen = Vision.Screen.GAME; g.screenConf = 0.77; g.w = 2340; g.h = 1080; g.meanLum = 90;
+          Vision.Result mn = new Vision.Result(); mn.screen = Vision.Screen.MENU; mn.screenConf = 0.9; mn.w = 2340; mn.h = 1080; mn.meanLum = 90;
+          check(Vision.sure(g, true, 0.8) && !Vision.sure(g, false, 0.8) && !Vision.sure(mn, true, 0.8),
+                "no-HUD mode accepts a weakly recognised game screen; HUD mode still needs 80%; a menu never counts"); }
         { // Cight, #help 2026-11-23: a 1921x1085 (16:9) screen where Roblox draws the PHONE HUD; the tablet reader never
           // measured it ("waiting for the honey counter"). It must switch to the phone reader, and real tablets must not.
           File ff = new File("test/fixtures/vc_169_phonehud.png");
