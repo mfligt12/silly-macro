@@ -572,6 +572,9 @@ public class SelfTest {
           Vision.Result mn = new Vision.Result(); mn.screen = Vision.Screen.MENU; mn.screenConf = 0.9; mn.w = 2340; mn.h = 1080; mn.meanLum = 90;
           check(Vision.sure(g, true, 0.8) && !Vision.sure(g, false, 0.8) && !Vision.sure(mn, true, 0.8),
                 "no-HUD mode accepts a weakly recognised game screen; HUD mode still needs 80%; a menu never counts"); }
+        { // S23 2026-11-24: empty bag (0/100,347,000) with the floating panel's purple over the bar's right end read 93%
+          Vision.Result pb = see("s23_panel_over_bag.png");
+          check(pb.screen == Vision.Screen.GAME && pb.pollen >= 0 && pb.pollen < 3, "bag bar: colour after an empty stretch (the floating panel) isn't pollen: empty bag reads ~0%, not 93% (" + Math.round(pb.pollen) + "%)"); }
         { // Cight, #help 2026-11-23: a 1921x1085 (16:9) screen where Roblox draws the PHONE HUD; the tablet reader never
           // measured it ("waiting for the honey counter"). It must switch to the phone reader, and real tablets must not.
           File ff = new File("test/fixtures/vc_169_phonehud.png");

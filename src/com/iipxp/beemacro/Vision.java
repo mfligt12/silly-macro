@@ -166,7 +166,9 @@ public final class Vision {
                 if (sat(p) < 30 && lum(p) < 450) state = -1;
             }
             cols++;
-            if (state == 1) { fillCols++; if (seenEmpty && x - lastFill > 8) conflicts++; lastFill = x; }
+            // The fill grows from the left: colour after an empty stretch is something on top of the bar (S23 11-24: the
+            // floating panel's purple over its right end read an empty bag as 93%), not more pollen
+            if (state == 1) { fillCols++; if (seenEmpty) { if (x - lastFill > 8) conflicts++; } else lastFill = x; }
             else if (state == -1) { emptyCols++; if (x > lastFill + 8) seenEmpty = true; }
         }
         double known = (fillCols + emptyCols) / (double) cols;
