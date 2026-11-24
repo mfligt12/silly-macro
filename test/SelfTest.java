@@ -782,6 +782,10 @@ public class SelfTest {
                   && p0 == 0 && "hid tool (keyboard 12, mouse 12)".equals(e0) && en == null && pn == 0 && com.iipxp.beemacro.SenderStatus.PROTO > 1,
                   "key sender status: protocol read (2 / old +hk = 1 / none = 0), emulator text kept, older senders get restarted"); }
         check(Profile.file(dir).exists() && p.backpackThreshold == 90 && p.hiveSlot == 3, "profile created with defaults");
+        check(Profile.normLink("Join my server: http://roblox.com/share?code=ab12&type=Server thanks").equals("https://www.roblox.com/share?code=ab12&type=Server")
+                && Profile.normLink("roblox://experiences/start?placeId=1537690962").equals("roblox://experiences/start?placeId=1537690962")
+                && p.serverLinkDraft.isEmpty() && p.webhookDraft.isEmpty(),
+              "server link: picked out of a pasted message, https + www; typing drafts start empty");
         { // "Send report to the developer": only the Honey/Pollen band leaves the phone, the log is redacted and capped
           boolean ok = true; StringBuilder why = new StringBuilder();
           for (String[] c : new String[][]{{"s23_newhud_beam.png", "phone"}, {"vc_hive_mic.jpg", "phone"}, {"tab_field_middle.png", "tablet"}}) {

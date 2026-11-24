@@ -621,6 +621,90 @@ public class MainActivity extends Activity {
     }
 
     // ------------------------------------------------------------------ Settings
+
+    /** Private server link field + Save / Open it + state (Settings and the setup wizard). */
+    void serverLinkEditor(LinearLayout into) {
+        final TextView psState = tv("", 12, DIM);
+        android.widget.EditText link = new android.widget.EditText(this);
+        link.setHint("https://www.roblox.com/share?code=…"); link.setTextColor(TXT); link.setHintTextColor(Ui.FAINT); link.setSingleLine(true);
+        link.setText(p.serverLinkDraft.isEmpty() ? p.serverLink : p.serverLinkDraft);
+        into.addView(link);
+        psState.setText(KeyServer.linkOk(p.serverLink) ? "Server link saved ✔" : "No private server link: Open Bee Swarm uses a public server"); psState.setTextColor(KeyServer.linkOk(p.serverLink) ? Ui.GREEN : Ui.GOLD);
+        // saved as you type (Discord: the link was lost after switching to Roblox to copy it, unless Save was pressed):
+        // a valid link at once, anything else as a draft that comes back in this field
+        link.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence c, int a, int b, int d) { }
+            public void onTextChanged(CharSequence c, int a, int b, int d) { }
+            public void afterTextChanged(android.text.Editable e) {
+                String raw = e.toString().trim(), n = Profile.normLink(raw);
+                p.serverLinkDraft = raw;
+                if (raw.isEmpty()) { p.serverLink = ""; psState.setText("No private server link: Open Bee Swarm uses a public server"); psState.setTextColor(Ui.GOLD); }
+                else if (KeyServer.linkOk(n)) { p.serverLink = n; p.serverLinkDraft = ""; psState.setText("Server link saved ✔"); psState.setTextColor(Ui.GREEN); }
+                else { psState.setText("Not a Roblox server link yet (kept as you typed it)"); psState.setTextColor(Ui.GOLD); }
+                App.save(MainActivity.this);
+            }
+        });
+        LinearLayout pr = row();
+        pr.addView(button("Save link", PURPLE, v -> {
+            String u = Profile.normLink(link.getText().toString().trim());
+            if (!KeyServer.linkOk(u)) { toast("That isn't a Roblox server link (https://www.roblox.com/… or roblox://…)"); return; }
+            p.serverLink = u; p.serverLinkDraft = ""; App.save(this); link.setText(u);
+            psState.setText("Server link saved ✔"); psState.setTextColor(Ui.GREEN);
+            Log.add("settings: private server link changed");
+        }), new LinearLayout.LayoutParams(0, dp(48), 1));
+        pr.addView(button("Open it", BLUE, v -> {
+            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(p.joinLink())).setPackage("com.roblox.client")); }
+            catch (Exception e) { toast("Roblox not installed"); }
+        }), new LinearLayout.LayoutParams(0, dp(48), 1));
+        into.addView(pr);
+        into.addView(psState);
+    }
+    /** Discord webhook field + Paste / Save / Send test + state (Settings and the setup wizard). */
+    void webhookEditor(LinearLayout into) {
+        final TextView whState = tv("", 12, DIM);
+        android.widget.EditText url = new android.widget.EditText(this);
+        url.setHint("https://discord.com/api/webhooks/…"); url.setTextColor(TXT); url.setHintTextColor(Ui.FAINT); url.setSingleLine(true);
+        url.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);   // it is a secret: hidden like a password
+        url.setText(p.webhookDraft.isEmpty() ? p.webhookUrl : p.webhookDraft);
+        into.addView(url);
+        whState.setText(Webhook.valid(p.webhookUrl) ? "Webhook saved ✔" : "No webhook yet"); whState.setTextColor(Webhook.valid(p.webhookUrl) ? Ui.GREEN : DIM);
+        url.addTextChangedListener(new android.text.TextWatcher() {   // saved as you type, like the server link
+            public void beforeTextChanged(CharSequence c, int a, int b, int d) { }
+            public void onTextChanged(CharSequence c, int a, int b, int d) { }
+            public void afterTextChanged(android.text.Editable e) {
+                String u = e.toString().trim();
+                p.webhookDraft = u;
+                if (u.isEmpty()) { p.webhookUrl = ""; whState.setText("No webhook yet"); whState.setTextColor(DIM); }
+                else if (Webhook.valid(u)) { p.webhookUrl = u; p.webhookDraft = ""; whState.setText("Webhook saved ✔"); whState.setTextColor(Ui.GREEN); }
+                else { whState.setText("Not a Discord webhook URL yet (kept as you typed it)"); whState.setTextColor(Ui.GOLD); }
+                App.save(MainActivity.this);
+            }
+        });
+        LinearLayout ub = row();
+        // a password field opens Samsung's secure keyboard, which can't paste (Discord): read the clipboard ourselves
+        ub.addView(button("Paste", 0, v -> {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            android.content.ClipData cd = cm == null ? null : cm.getPrimaryClip();
+            CharSequence t = cd == null || cd.getItemCount() == 0 ? null : cd.getItemAt(0).coerceToText(this);
+            if (t == null || t.toString().trim().isEmpty()) { toast("Copy the webhook URL in Discord first"); return; }
+            url.setText(t.toString().trim()); toast(Webhook.valid(t.toString().trim()) ? "Pasted and saved" : "Pasted, but that isn't a Discord webhook URL");
+        }), new LinearLayout.LayoutParams(0, dp(48), 1));
+        ub.addView(button("Save", PURPLE, v -> {
+            String u = url.getText().toString().trim();
+            if (!u.isEmpty() && !Webhook.valid(u)) { toast("That isn't a Discord webhook URL"); return; }
+            p.webhookUrl = u; p.webhookDraft = ""; App.save(this);
+            whState.setText(u.isEmpty() ? "Webhook removed" : "Webhook saved ✔"); whState.setTextColor(u.isEmpty() ? DIM : Ui.GREEN);
+        }), new LinearLayout.LayoutParams(0, dp(48), 1));
+        ub.addView(button("Send test", BLUE, v -> {
+            if (!Webhook.valid(p.webhookUrl)) { toast("Save a webhook URL first"); return; }
+            Webhook.send(this, "test", "👋 Silly Macro test", "Webhook works. " + Routes.name(p.field) + " · " + p.pattern
+                    + (Monitor.honey > 0 ? "\nHoney: " + Stats.big(Monitor.honey) : ""), Webhook.PURPLE, true);
+            toast("Sending… (screenshot included if screen capture is on)");
+        }), new LinearLayout.LayoutParams(0, dp(48), 1));
+        into.addView(ub);
+        into.addView(whState);
+    }
+
     void buildSettings() {
         page("settings");
         LinearLayout o = card("Floating overlay");
@@ -661,61 +745,12 @@ public class MainActivity extends Activity {
         LinearLayout ps = card("Private server");
         ps.addView(tv("Optional. Without a link, \"Open Bee Swarm\" opens the normal game (a public server works too). With one, it and the overnight rejoin go to your private server. Paste its share link from Roblox "
                 + "(Server → Private Servers → … → Copy Link), e.g. https://www.roblox.com/share?code=…&type=Server", 12, DIM));
-        android.widget.EditText link = new android.widget.EditText(this);
-        link.setHint("https://www.roblox.com/share?code=…"); link.setTextColor(TXT); link.setHintTextColor(Ui.FAINT); link.setSingleLine(true);
-        link.setText(p.serverLink);
-        ps.addView(link);
-        TextView psState = tv(KeyServer.linkOk(p.serverLink) ? "Server link saved ✔" : "No private server link: Open Bee Swarm uses a public server", 12, KeyServer.linkOk(p.serverLink) ? Ui.GREEN : Ui.GOLD);
-        LinearLayout pr = row();
-        pr.addView(button("Save link", PURPLE, v -> {
-            String u = link.getText().toString().trim();
-            java.util.regex.Matcher um = java.util.regex.Pattern.compile("(https?://\\S+|roblox://\\S+)").matcher(u);   // pasted with text around it ("Join my server: …")
-            if (um.find()) u = um.group(1);
-            u = u.replaceFirst("^http://", "https://").replaceFirst("^https://roblox\\.com/", "https://www.roblox.com/");
-            if (!KeyServer.linkOk(u)) { toast("That isn't a Roblox server link (https://www.roblox.com/… or roblox://…)"); return; }
-            p.serverLink = u; App.save(this); link.setText(u);
-            psState.setText("Server link saved ✔"); psState.setTextColor(Ui.GREEN);
-            Log.add("settings: private server link changed");
-        }), new LinearLayout.LayoutParams(0, dp(48), 1));
-        pr.addView(button("Open it", BLUE, v -> {
-            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(p.joinLink())).setPackage("com.roblox.client")); }
-            catch (Exception e) { toast("Roblox not installed"); }
-        }), new LinearLayout.LayoutParams(0, dp(48), 1));
-        ps.addView(pr);
-        ps.addView(psState);
+        serverLinkEditor(ps);
         LinearLayout dc = card("Discord webhook");
         dc.addView(tv("Reports with screenshots to your Discord channel, like Natro: started, backpack full, converting, honey made, balloon, "
                 + "Mondo, resets / rejoins, a timed report (every 10 min to 2 h) and the session summary. In Discord: channel → Edit → Integrations → Webhooks → New → Copy URL. "
                 + "Screenshots go only to that webhook.", 12, DIM));
-        android.widget.EditText url = new android.widget.EditText(this);
-        url.setHint("https://discord.com/api/webhooks/…"); url.setTextColor(TXT); url.setHintTextColor(Ui.FAINT); url.setSingleLine(true);
-        url.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);   // it is a secret: hidden like a password
-        url.setText(p.webhookUrl);
-        dc.addView(url);
-        TextView whState = tv(Webhook.valid(p.webhookUrl) ? "Webhook saved ✔" : "No webhook yet", 12, Webhook.valid(p.webhookUrl) ? Ui.GREEN : DIM);
-        LinearLayout ub = row();
-        // a password field opens Samsung's secure keyboard, which can't paste (Discord): read the clipboard ourselves
-        ub.addView(button("Paste", 0, v -> {
-            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            android.content.ClipData cd = cm == null ? null : cm.getPrimaryClip();
-            CharSequence t = cd == null || cd.getItemCount() == 0 ? null : cd.getItemAt(0).coerceToText(this);
-            if (t == null || t.toString().trim().isEmpty()) { toast("Copy the webhook URL in Discord first"); return; }
-            url.setText(t.toString().trim()); toast("Pasted: now press Save");
-        }), new LinearLayout.LayoutParams(0, dp(48), 1));
-        ub.addView(button("Save", PURPLE, v -> {
-            String u = url.getText().toString().trim();
-            if (!u.isEmpty() && !Webhook.valid(u)) { toast("That isn't a Discord webhook URL"); return; }
-            p.webhookUrl = u; App.save(this);
-            whState.setText(u.isEmpty() ? "Webhook removed" : "Webhook saved ✔"); whState.setTextColor(u.isEmpty() ? DIM : Ui.GREEN);
-        }), new LinearLayout.LayoutParams(0, dp(48), 1));
-        ub.addView(button("Send test", BLUE, v -> {
-            if (!Webhook.valid(p.webhookUrl)) { toast("Save a webhook URL first"); return; }
-            Webhook.send(this, "test", "👋 Silly Macro test", "Webhook works. " + Routes.name(p.field) + " · " + p.pattern
-                    + (Monitor.honey > 0 ? "\nHoney: " + Stats.big(Monitor.honey) : ""), Webhook.PURPLE, true);
-            toast("Sending… (screenshot included if screen capture is on)");
-        }), new LinearLayout.LayoutParams(0, dp(48), 1));
-        dc.addView(ub);
-        dc.addView(whState);
+        webhookEditor(dc);
         whStatus = tv("", 11, DIM); dc.addView(whStatus);
         dc.addView(toggle("Include screenshots", p.whScreens, on -> p.whScreens = on));
         dc.addView(toggle("Converting & honey made", p.whConvert, on -> p.whConvert = on));

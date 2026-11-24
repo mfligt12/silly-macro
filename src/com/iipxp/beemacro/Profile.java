@@ -63,9 +63,17 @@ public final class Profile {
     // Your private server (used by the "Open Bee Swarm" button)
     /** Your private server link (empty = Bee Swarm's normal game page). Used by "Open Bee Swarm" and overnight rejoins. */
     public String serverLink = "";
+    /** What was typed in the server link / webhook fields but isn't a valid link yet: shown again in the field. */
+    public String serverLinkDraft = "", webhookDraft = "";
     /** Without a private server link: Roblox's start link joins a public Bee Swarm server. The game page link used
      *  before only showed the page and waited for Play, so a rejoin never got back in (Discord: "can't rejoin normal servers"). */
     public static final String BEE_SWARM = "roblox://experiences/start?placeId=1537690962";
+    /** Roblox server link as typed or pasted: the link out of a whole message ("Join my server: …"), https, www. */
+    public static String normLink(String u) {
+        java.util.regex.Matcher um = java.util.regex.Pattern.compile("(https?://\\S+|roblox://\\S+)").matcher(u);
+        if (um.find()) u = um.group(1);
+        return u.replaceFirst("^http://", "https://").replaceFirst("^https://roblox\\.com/", "https://www.roblox.com/");
+    }
     public String joinLink() { return serverLink == null || serverLink.trim().isEmpty() ? BEE_SWARM : serverLink.trim(); }
 
     // Which layout these input coordinates were set for ("s23" / "tablet"); set once on first start
