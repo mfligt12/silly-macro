@@ -759,6 +759,25 @@ public class MainActivity extends Activity {
             public void onStopTrackingTouch(SeekBar s) { App.save(MainActivity.this); }
         });
         o.addView(sb);
+        LinearLayout swc = card("Smallest width (required)");
+        TextView swt = tv("", 12, DIM); swc.addView(swt);
+        Runnable swShow = () -> swt.setText(ScreenWidth.tablet(this) ? "Tablet: your screen's own width is kept (" + ScreenWidth.current(this) + " dp)."
+                : "Phones must use Android's Smallest width 360 dp (Developer options; Samsung: Minimum width), or Roblox draws a HUD the macro can't read. Now: " + ScreenWidth.current(this) + " dp"
+                  + (ScreenWidth.current(this) == ScreenWidth.TARGET ? " ✓" : ". Set it here (uses the key sender), then close and reopen Roblox. Start also sets it for you."));
+        swShow.run();
+        swc.addView(button("Set to 360", PURPLE, v -> {
+            if (ScreenWidth.tablet(this)) { toast("Not needed on a tablet"); return; }
+            new Thread(() -> { String why = ScreenWidth.apply(this); runOnUiThread(() -> { toast(why != null ? why : "Set to 360. Close and reopen Roblox."); swShow.run(); }); }).start();
+        }));
+        swc.addView(toggle("S23 resolution (1080 × 2340) — the screen the macro was built on", p.s23Res, on -> {
+            boolean was = p.s23Res; p.s23Res = on; App.save(this);   // before: the size change recreates this screen
+            new Thread(() -> {
+                String why = ScreenWidth.s23(this, on);
+                if (why != null) { p.s23Res = was; App.save(this); }
+                runOnUiThread(() -> toast(why != null ? why : on ? "S23 resolution on. Close and reopen Roblox." : "Back to your own resolution (Smallest width 360). Close and reopen Roblox."));
+            }).start();
+        }));
+        swc.addView(tv("Changes the whole phone's resolution until you switch it off (the screen may look a little sharper or softer). Turn it off before uninstalling Silly Macro, or reset it in Developer options.", 11, DIM));
         LinearLayout su = card("Setup");
         su.addView(tv("Walks you through Shizuku, Accessibility, screen capture, hive slot, move speed, sprinkler, Roblox settings, webhook and private server again.", 12, DIM));
         su.addView(button("Run setup again", PURPLE, v -> {
@@ -925,9 +944,9 @@ public class MainActivity extends Activity {
         boolean panel = input && MacroService.inst.overlayShown();
         line(s, panel, panel ? "Floating panel on screen (Start, Stop, emergency stop)"
                 : "Floating panel hidden: tap step 5 below, or Settings → Show floating overlay");
-        // Developer options → "Smallest width" turned down (Discord: set to 220) makes Roblox draw a different HUD
-        int sw = getResources().getConfiguration().smallestScreenWidthDp;
-        if (sw > 0 && sw < 300) line(s, false, "Android's \"Smallest width\" is " + sw + " dp (Developer options). Set it to 360, then restart Roblox: below 300 Roblox draws its HUD differently and the macro can't read it");
+        // Required: Developer options → "Smallest width" 360 on phones (Roblox draws a HUD the macro can't read otherwise)
+        if (!ScreenWidth.tablet(this)) { int sw = ScreenWidth.current(this);
+            line(s, sw == ScreenWidth.TARGET, "Smallest width " + sw + " dp" + (sw == ScreenWidth.TARGET ? " (required 360)" : ": must be 360. Settings → Smallest width → Set to 360, or Start sets it for you")); }
         boolean game = v != null && v.screen == Vision.Screen.GAME && v.screenConf >= p.minConfidence;
         line(s, game, "Vision: " + (v == null ? "no frames" : game ? "Bee Swarm HUD recognized" : "waiting for Bee Swarm (now: " + v.screen + ")"));
         checks.setText(s.toString().trim());

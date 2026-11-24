@@ -88,6 +88,10 @@ final class SetupWizard {
         if (page == TITLES.length - 1) { finish(); return; }
         String why = check == null ? null : problem;
         if (why == null) { open(page + 1); return; }
+        if (page == 7 && ScreenWidth.needed(a)) {   // required: the HUD can't be read at another width
+            new android.app.AlertDialog.Builder(a).setTitle("Required").setMessage(why + "\n\nThe macro can't read the game at any other width.").setPositiveButton("OK", null).show();
+            return;
+        }
         Log.add("setup: continued past \"" + TITLES[page] + "\" without: " + why);
         new android.app.AlertDialog.Builder(a).setTitle("Not done yet").setMessage(why + "\n\nThe macro may not work until this is done. Continue anyway?")
                 .setPositiveButton("Continue anyway", (d, w) -> open(page + 1)).setNegativeButton("Stay", null).show();
@@ -165,12 +169,22 @@ final class SetupWizard {
                 col.addView(a.stepper("Sprinkler hotbar slot (key)", () -> "" + p.sprinklerSlot, d -> p.sprinklerSlot = MainActivity.clamp(p.sprinklerSlot + d, 1, 7)));
                 break;
             case 7: {
-                int sw = a.getResources().getConfiguration().smallestScreenWidthDp;
-                text(col, "In Roblox (in the game: menu → Settings):\n• Camera Mode → Classic\n• Shift Lock Switch → On\n\nOn your phone: Settings → Developer options → Smallest width (some phones: Minimum width) → 360, then close and reopen Roblox. Yours is now " + sw + " dp.");
-                btn(col, "Open Developer options", 0, v -> {
-                    try { a.startActivity(new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)); } catch (Exception e) { a.toast("Turn on Developer options first (Build number ×7)"); }
-                });
-                check = () -> { int now = a.getResources().getConfiguration().smallestScreenWidthDp; return now == 360 ? null : "Smallest width is " + now + " dp: set it to 360"; };
+                int sw = ScreenWidth.current(a);
+                boolean tab = ScreenWidth.tablet(a);
+                text(col, "In Roblox (in the game: menu → Settings):\n• Camera Mode → Classic\n• Shift Lock Switch → On\n\n"
+                        + (tab ? "Tablet: keep your screen's own Smallest width (now " + sw + " dp)."
+                               : "REQUIRED on phones: Smallest width 360 (Developer options; Samsung: Minimum width). Yours is now " + sw + " dp"
+                                 + (sw == ScreenWidth.TARGET ? " ✓" : ". Tap Set it for me (uses the key sender from step 1), then close and reopen Roblox.")));
+                if (!tab && sw != ScreenWidth.TARGET) {
+                    btn(col, "Set it for me (360)", 0, v -> new Thread(() -> {
+                        String why = ScreenWidth.apply(a);
+                        a.runOnUiThread(() -> { if (why != null) a.toast(why); else { a.toast("Smallest width set to 360. Close and reopen Roblox."); open(page); } });
+                    }).start());
+                    btn(col, "Open Developer options", 0, v -> {
+                        try { a.startActivity(new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)); } catch (Exception e) { a.toast("Turn on Developer options first (Build number ×7)"); }
+                    });
+                }
+                check = () -> ScreenWidth.needed(a) ? "Smallest width is " + ScreenWidth.current(a) + " dp: it must be 360 (tap Set it for me)" : null;
                 break;
             }
             case 8: {

@@ -91,6 +91,10 @@ final class Keys {
     static boolean mouseDown(int x, int y) { return send("md " + x + " " + y); }
     static boolean mouseUp(int x, int y) { return send("mu " + x + " " + y); }
     static boolean rejoin(String link) { return send("rj " + link); }
+    /** `wm density DPI` as the shell user (protocol 4+: an older sender would answer "ok" to anything). */
+    static boolean setDensity(int dpi) { emulatorState(); return senderProto >= 4 && send("sw " + dpi); }
+    /** `wm size` (portrait W x H) + density, or back to the real size (w <= 0). Protocol 4+. */
+    static boolean setResolution(int w, int h, int dpi) { emulatorState(); return senderProto >= 4 && send(w <= 0 ? "sr reset" : "sr " + w + " " + h + " " + dpi); }
     static boolean autoClick(boolean on, int x, int y) { return send("ac " + (on ? 1 : 0) + " " + x + " " + y); }
     /** Samsung Game Booster locks the screen ("touch protection") after ~3 min with no input; Scroll Lock does
      *  nothing in Bee Swarm but counts as input (tested live 2026-11-21: no lock in 5 min with a tap every 45 s). */

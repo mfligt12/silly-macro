@@ -75,6 +75,8 @@ public final class KeyServer {
                 if (line.equals("st")) { out.println("ok " + emulator + " (keyboard " + keyboardId() + ", mouse " + mouseId() + ") +hk +p" + SenderStatus.PROTO); continue; }   // +hk: knows "hk"; +pN: this protocol (the app restarts an older sender)   // which emulator, and the device ids keys/clicks use
                 String[] p = line.split(" ");
                 if (p[0].equals("rj") && p.length == 2) { out.println(rejoin(p[1]) ? "ok" : "bad link"); continue; }
+                if (p[0].equals("sr")) { out.println(resolution(p) ? "ok" : "bad size"); continue; }   // "sr W H DPI" / "sr reset": screen size (wm size)
+                if (p[0].equals("sw") && p.length == 2) { out.println(density(p[1]) ? "ok" : "bad density"); continue; }   // "sw DPI": Smallest width (wm density)
                 if (p[0].equals("hk") && p.length == 3) { out.println(hidKey(Integer.parseInt(p[1]), Long.parseLong(p[2])) ? "ok" : "no hid"); continue; }   // "hk CODE MS": number key on the virtual keyboard
                 int code = Integer.parseInt(p[1]);
                 if (p[0].equals("ac")) {   // "ac 1|0 X Y": only the connection that switched clicking on may switch it off
@@ -88,7 +90,7 @@ public final class KeyServer {
                     else if (mouseDown != 0) { mouse(false, x, y, mouseDown); mouseDown = 0; }
                     out.println("ok"); continue;
                 }
-                if (p.length != 2) continue;
+                if (p.length != 2) { out.println("unknown"); continue; }   // always answer: a silent sender froze the app's next send
                 if (p[0].equals("d")) { long t = SystemClock.uptimeMillis(); held.put(code, t); key(KeyEvent.ACTION_DOWN, code, t); }
                 else if (p[0].equals("u")) { Long t = held.remove(code); key(KeyEvent.ACTION_UP, code, t == null ? SystemClock.uptimeMillis() : t); }
                 out.println("ok");
@@ -230,6 +232,30 @@ public final class KeyServer {
      *  the background so the reply comes back at once; the app watches the screen for the game to return. */
     /** Only roblox.com share/game links or roblox:// links, with no characters a shell or intent could misread. */
     static boolean linkOk(String link) { return link != null && link.matches("(https://www\\.roblox\\.com/|roblox://)[A-Za-z0-9/?=&._%-]+"); }
+
+    /** Developer options → Smallest width, set the way that screen does: `wm density`. */
+    static boolean density(String v) {
+        try {
+            int dpi = Integer.parseInt(v);
+            if (dpi < 120 || dpi > 960) return false;
+            int rc = new ProcessBuilder("wm", "density", "" + dpi).redirectErrorStream(true).start().waitFor();
+            System.out.println("density: set " + dpi + " (exit " + rc + ")");
+            return rc == 0;
+        } catch (Exception e) { System.out.println("density failed: " + e); return false; }
+    }
+
+    /** Screen resolution as Developer options would: `wm size WxH` + `wm density`, or back to the panel's own size. */
+    static boolean resolution(String[] p) {
+        try {
+            if (p.length == 2 && p[1].equals("reset")) return new ProcessBuilder("wm", "size", "reset").start().waitFor() == 0;
+            if (p.length != 4) return false;
+            int w = Integer.parseInt(p[1]), h = Integer.parseInt(p[2]);
+            if (w < 480 || h < 480 || w > 4000 || h > 4000) return false;
+            boolean ok = new ProcessBuilder("wm", "size", w + "x" + h).start().waitFor() == 0;
+            System.out.println("resolution: " + w + "x" + h + " " + (ok ? "set" : "failed"));
+            return ok && density(p[3]);
+        } catch (Exception e) { System.out.println("resolution failed: " + e); return false; }
+    }
 
     static boolean rejoin(String link) {
         if (!linkOk(link)) return false;

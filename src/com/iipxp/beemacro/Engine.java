@@ -98,6 +98,16 @@ final class Engine implements Runnable {
                 if (emu == null || emu.startsWith("none") || "starting".equals(emu)) return "The new key sender has no keyboard + mouse yet (" + emu + "). Wait a few seconds and press Start again.";
             }
         } else if (!s.tap(p.idleX, p.idleY)) return "Input test failed: accessibility gestures were not accepted.";
+        // Required: Smallest width 360 on phones (Roblox draws an unreadable HUD otherwise). Set it, then Roblox has to
+        // start again to draw at the new size.
+        if (ScreenWidth.needed(s)) {
+            int was = ScreenWidth.current(s);
+            String why = ScreenWidth.apply(s);
+            if (why != null) return "Smallest width must be 360 (yours is " + was + " dp) and it couldn't be set: " + why + ". Or set it yourself: Developer options → Smallest width (Minimum width) → 360.";
+            String link = p.joinLink();
+            boolean rj = link != null && !link.isEmpty() && Keys.rejoin(link);
+            return "Smallest width was " + was + " dp: set to 360 for you. " + (rj ? "Roblox is restarting on your server: press ▶ Start once Bee Swarm is back." : "Close Roblox completely, open Bee Swarm again, then press ▶ Start.");
+        }
         return null;
     }
 
