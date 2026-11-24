@@ -847,7 +847,7 @@ public class MainActivity extends Activity {
                 : "Floating panel hidden: tap step 5 below, or Settings → Show floating overlay");
         // Developer options → "Smallest width" turned down (Discord: set to 220) makes Roblox draw a different HUD
         int sw = getResources().getConfiguration().smallestScreenWidthDp;
-        if (sw > 0 && sw < 300) line(s, false, "Android's \"Smallest width\" is " + sw + " dp (Developer options). Set it back to the default: Roblox draws its HUD differently and the macro can't read it");
+        if (sw > 0 && sw < 300) line(s, false, "Android's \"Smallest width\" is " + sw + " dp (Developer options). Set it to 360, then restart Roblox: below 300 Roblox draws its HUD differently and the macro can't read it");
         boolean game = v != null && v.screen == Vision.Screen.GAME && v.screenConf >= p.minConfidence;
         line(s, game, "Vision: " + (v == null ? "no frames" : game ? "Bee Swarm HUD recognized" : "waiting for Bee Swarm (now: " + v.screen + ")"));
         checks.setText(s.toString().trim());
