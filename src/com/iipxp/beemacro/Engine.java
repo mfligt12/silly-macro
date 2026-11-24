@@ -147,7 +147,7 @@ final class Engine implements Runnable {
         final int userSlot = p.hiveSlot;   // an auto-picked free hive is for this run only
         noHudNow = startNoHud;
         if (noHudNow) noHudNote(p.noHudForced ? "switched on in Settings" : "the Honey/Pollen counters weren't read on this screen");
-        Log.add("engine: start (" + Profile.PRESET + ", hive slot " + p.hiveSlot + ", threshold " + p.backpackThreshold + "%)");
+        Log.add("engine: start (" + p.field + " — " + p.pattern + ", hive slot " + p.hiveSlot + ", threshold " + p.backpackThreshold + "%)");
         lastHourly = SystemClock.uptimeMillis();
         hook("session", "▶ Macro started", Routes.name(p.field) + " · " + p.pattern + "\nHive slot " + p.hiveSlot + " · bag limit " + p.backpackThreshold + "% · " + p.fieldMinutes + " min"
                 + (Monitor.honey > 0 ? "\nHoney: " + Stats.big(Monitor.honey) : ""), Webhook.PURPLE, true);
@@ -257,6 +257,10 @@ final class Engine implements Runnable {
         // auto-slot switch off went to the field with no hive, and the next trips reset over and over)
         Vision.Result r = waitFor(x -> promptKnown(x) && x.prompt != Vision.Prompt.NONE, 4000);
         if (r == null) r = waitFor(x -> promptKnown(x), 1000);
+        // A blue banner alone isn't proof before we've claimed anything: Tab S9 FE 2026-11-24 with no hive read one at
+        // the central spawn (taken for our pad by a wrongly learned zoom step), never pressed E and walked to Pepper
+        // from the spawn. Check with E like an unreadable prompt: our pad answers, the spawn doesn't.
+        if (r != null && r.prompt == Vision.Prompt.BANNER_BLUE && !ownsHive) { Log.add("hive: only a blue banner here and no hive claimed yet, checking with E"); r = null; }
         if (r != null && ownHive(r)) { if (r.prompt != Vision.Prompt.BANNER_BLUE) ownsHive = true; return; }
         if (r != null && r.prompt == Vision.Prompt.TAP_CLAIM) { claimHere(); return; }
         // Unreadable prompt and no hive yet: it went straight to the field with none (Discord 2026-11-24: "camera reset
