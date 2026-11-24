@@ -27,6 +27,8 @@ import java.nio.IntBuffer;
 /** MediaProjection screen capture (user consent required by Android). Keeps the latest frame as ARGB ints. */
 public class CaptureService extends Service {
     public static volatile CaptureService inst;
+    /** Android said the shared content is out of sight (only happens when a single app was shared, not the screen). */
+    public static volatile boolean contentHidden;
     public static final class Frame { public int[] px; public int w, h; public long time; }
 
     private MediaProjection mp;
@@ -53,7 +55,13 @@ public class CaptureService extends Service {
         } catch (Exception e) { Log.add("capture: projection failed " + e); stopSelf(); return START_NOT_STICKY; }
         if (mp == null) { stopSelf(); return START_NOT_STICKY; }
         thread = new HandlerThread("capture"); thread.start(); handler = new Handler(thread.getLooper());
-        mp.registerCallback(new MediaProjection.Callback() { @Override public void onStop() { Log.add("capture: projection stopped by system/user"); stopSelf(); } }, handler);
+        contentHidden = false;
+        mp.registerCallback(new MediaProjection.Callback() {
+            @Override public void onStop() { Log.add("capture: projection stopped by system/user"); stopSelf(); }
+            // Android 14+: only called when ONE app is shared ("A single app"); that app out of sight = black frames
+            @Override public void onCapturedContentVisibilityChanged(boolean visible) { contentHidden = !visible; Log.add("capture: shared app " + (visible ? "visible" : "hidden - frames are black")); }
+            @Override public void onCapturedContentResize(int w, int h) { Log.add("capture: shared content " + w + "x" + h); }
+        }, handler);
         Point s = size();
         vw = s.x; vh = s.y;
         reader = ImageReader.newInstance(vw, vh, PixelFormat.RGBA_8888, 2);

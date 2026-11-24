@@ -16,6 +16,7 @@ public final class Vision {
         public double pollen = -1, pollenConf;             // 0..100 backpack %
         public Prompt prompt = Prompt.NONE; public double promptConf;
         public double meanLum;
+        public double blackFrac;   // share of pure-black samples (max channel <= 16)
         public int shiftLock = -1;                        // 1 on, 0 off, -1 unknown
         public boolean menuPeople;                        // menu open on the People tab (Respawn button where we tap)
         public Field field = Field.UNKNOWN;               // flowers under the player
@@ -81,7 +82,7 @@ public final class Vision {
     /** In the game for the macro: the HUD was read, or (no-HUD mode) a lit landscape frame that isn't a menu, dialog or
      *  black screen. Menus, the respawn dialog and DARK are found without the counters, so those checks stay. */
     public static boolean playable(Result r, boolean noHud) {
-        return r != null && (r.screen == Screen.GAME || (noHud && r.screen == Screen.UNKNOWN && r.w > r.h && r.meanLum >= 18));
+        return r != null && (r.screen == Screen.GAME || (noHud && r.screen == Screen.UNKNOWN && r.w > r.h && !(r.meanLum < 18 && r.blackFrac >= 0.5)));
     }
     /** Sure enough of the game screen to act. No-HUD mode doesn't need the HUD read well, so a weakly recognised game
      *  screen counts too (S23 2026-11-24: GAME at 77% was rejected while an unrecognised one passed → 4 failed respawns). */
@@ -89,6 +90,8 @@ public final class Vision {
         return playable(r, noHud) && (noHud || r.screen != Screen.GAME || r.screenConf >= minConf);
     }
     public enum Mode { HUD, NO_HUD, BLOCKED }
+    /** What a capture that shows nothing looks like: dark on average, almost all of it pure black, no HUD. */
+    public static boolean blackScreen(double meanLum, double blackFrac, double hud) { return meanLum < 18 && blackFrac >= 0.85 && hud < 0.3; }
     /** How Start begins: with the HUD when it's read, in no-HUD mode when it isn't (or when forced), never for portrait,
      *  a black screen or an open menu (those have their own fixes). */
     public static Mode startMode(boolean forced, Result r, double minConf, boolean landscape) {
@@ -100,9 +103,10 @@ public final class Vision {
     static Result analyze(int[] px, int w, int h, boolean tablet) {
         Result res = new Result(); res.w = w; res.h = h;
         if (w < h) { res.screen = Screen.UNKNOWN; res.screenConf = 0.9; return res; } // portrait: not Roblox gameplay
-        long sum = 0; int n = 0;
-        for (int y = 0; y < h; y += 16) for (int x = 0; x < w; x += 16) { sum += lum(px[y * w + x]); n++; }
+        long sum = 0; int n = 0, black = 0;
+        for (int y = 0; y < h; y += 16) for (int x = 0; x < w; x += 16) { int p = px[y * w + x]; sum += lum(p); n++; if (Math.max(r(p), Math.max(g(p), b(p))) <= 16) black++; }
         res.meanLum = sum / (3.0 * n);
+        res.blackFrac = black / (double) n;
 
         double hud = hudConfidence(px, w, h);
         double menu = frac(px, w, h, RESUME_X0, RESUME_X1, RESUME_Y0, RESUME_Y1, Vision::isMenuBlue);
@@ -126,7 +130,10 @@ public final class Vision {
         res.menuPeople = menu > 0.6 && hud < 0.3;   // menus dim the HUD; a navy game scene can match the Resume colour
         if (confirm > 0.6 && hud < 0.3) { res.screen = Screen.RESPAWN_DIALOG; res.screenConf = confirm; }
         else if (res.menuPeople) { res.screen = Screen.MENU; res.screenConf = menu; }
-        else if (res.meanLum < 18) { res.screen = Screen.DARK; res.screenConf = 1 - res.meanLum / 18; }
+        // Black capture = (nearly) every pixel black and no HUD. Only the mean was checked before, so a dark game view
+        // (night, camera in a wall: HUD lit, mean ~20) or Roblox's grey menu over one read as "Screen capture only
+        // sees a black screen" and blocked Start. Our own floating panel may still show (≤ ~10 % of the frame).
+        else if (blackScreen(res.meanLum, res.blackFrac, hud)) { res.screen = Screen.DARK; res.screenConf = 1 - res.meanLum / 18; }
         // + the HUD must be dimmed (menus measured 0.00, gameplay ~1.0): a dark game scene is not a menu (live false alarm)
         else if ((band > 0.85 || panel > 0.85) && hud < 0.3 && !isDisconnectBlue(at(px, w, h, 100 / 2340.0, 500 / 1080.0, 0, 0))) { res.screen = Screen.MENU; res.screenConf = band; }
         else if (hud >= 0.75) { res.screen = Screen.GAME; res.screenConf = hud; }

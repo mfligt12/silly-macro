@@ -308,6 +308,21 @@ public class SelfTest {
         Remap.Out dko = Remap.apply(dk.getRGB(0, 0, dk.getWidth(), dk.getHeight(), null, 0, dk.getWidth()), dk.getWidth(), dk.getHeight());
         check(!dko.menuOpen && Vision.analyze(dko).screen != Vision.Screen.MENU, "tablet: a dark game view (camera in a wall) is not the Roblox menu (menu button must show X)");
 
+        // ---- "Screen capture only sees a black screen" only for a black capture, not for a dark game view or menu
+        {
+            int kw = 2340, kh = 1080; int[] blk = new int[kw * kh]; java.util.Arrays.fill(blk, 0xFF000000);
+            for (int y = 300; y < 520; y++) for (int x = 1900; x < 2290; x++) blk[y * kw + x] = 0xFF2A2350;   // our floating panel stays visible
+            for (int y = 400; y < 460; y++) for (int x = 1920; x < 2270; x++) blk[y * kw + x] = 0xFFFFFFFF;
+            check(Vision.analyze(blk, kw, kh).screen == Vision.Screen.DARK, "black capture (only our panel showing) reads as DARK");
+            BufferedImage gi = ImageIO.read(new File("test/fixtures/s23_newhud_hive.png"));
+            int gw = gi.getWidth(), gh = gi.getHeight(); int[] g = gi.getRGB(0, 0, gw, gh, null, 0, gw);
+            for (int i = 0; i < g.length; i++) { int x = i % gw, y = i / gw; if (y >= 140 || x < 700 || x > 1750) g[i] = 0xFF030404; }   // camera in a wall: world black, Honey/Pollen lit
+            Vision.Result gr = Vision.analyze(g, gw, gh);
+            check(gr.meanLum < 18 && gr.screen != Vision.Screen.DARK && Vision.playable(gr, true), "dark game view with the HUD lit (mean " + Math.round(gr.meanLum) + ") is not a black capture: " + gr.screen);
+            check(!Vision.blackScreen(15, 0.30, 0.0) && !Vision.blackScreen(15, 0.95, 0.8) && Vision.blackScreen(2, 0.97, 0.0),
+                  "black-screen rule: dark grey menu panel (30% pure black) and lit HUD are not black captures");
+        }
+
         // ---- Screen guard on real frames
         check(guard("tab_pinetree_zoomed.png").state == NavGuard.State.IN_FIELD && guard("field_pinetree.png").state == NavGuard.State.IN_FIELD && guard("field_pinetree4.png").state == NavGuard.State.IN_FIELD, "guard: Pine Tree frames (tablet and S23) read as inside the field");
         check(guard("tab_other_field.png").state != NavGuard.State.IN_FIELD && guard("field_other.png").state != NavGuard.State.IN_FIELD, "guard: the red-flower field is not Pine Tree");
@@ -564,7 +579,7 @@ public class SelfTest {
           }
           if (menu != null) { boolean nh2 = menu.screen == Vision.Screen.MENU && Vision.startMode(true, menu, 0.6, true) == Vision.Mode.BLOCKED && !Vision.playable(menu, true); ok &= nh2; if (!nh2) why.append(" menu=" + menu.screen); }
           Vision.Result dark = new Vision.Result(); dark.screen = Vision.Screen.DARK; dark.w = 2340; dark.h = 1080;
-          Vision.Result dim = new Vision.Result(); dim.w = 2340; dim.h = 1080; dim.meanLum = 5;   // UNKNOWN but black: not playable
+          Vision.Result dim = new Vision.Result(); dim.w = 2340; dim.h = 1080; dim.meanLum = 5; dim.blackFrac = 0.97;   // UNKNOWN but black: not playable
           ok &= Vision.startMode(true, dark, 0.6, true) == Vision.Mode.BLOCKED && !Vision.playable(dim, true) && Vision.startMode(false, null, 0.6, true) == Vision.Mode.BLOCKED;
           check(ok, "no-HUD mode: HUD read = full mode, unread counters = no-HUD (or forced), portrait/menu/black screen still blocked" + why); }
         { // S23 2026-11-24: no-HUD mode, game recognised at 77% after a respawn was "not readable" 4x
