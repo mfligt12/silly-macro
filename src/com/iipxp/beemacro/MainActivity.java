@@ -398,12 +398,38 @@ public class MainActivity extends Activity {
         if (MacroService.inst == null) { toast("Enable input first (Setup on Home)"); return; }
         Engine e = Engine.inst;
         if (e != null && !e.finished()) { toast(e.paused ? "Paused: press Resume" : "Already running"); return; }
-        Intent li = getPackageManager().getLaunchIntentForPackage("com.roblox.client");
-        if (li == null) { toast("Roblox not installed"); return; }
-        startActivity(li);
-        toast("Starting in Roblox…");
-        new Thread(() -> { SystemClock.sleep(3500); MacroService s = MacroService.inst; String why = s == null ? "input service stopped" : Engine.start(s); if (why != null) { MacroService.startWhy = why; MacroService.startWhyAt = SystemClock.uptimeMillis(); runOnUiThread(() -> toast(why)); } }, "start").start();
+        // Never send Roblox its launch intent while a game runs: when the game was joined from a link (Home step 5, a
+        // share link), Roblox takes it as "go to the home page" and leaves the game, and the check 3.5 s later saw the
+        // phone still upright ("Turn the device sideways"). S23 live 2026-11-23; Silly Admin report (S25+): 35 min of
+        // "not in Bee Swarm gameplay" after pressing Start. Game seen lately: step aside so Android shows it again.
+        boolean inGame = Monitor.gameSeen > 0 && SystemClock.uptimeMillis() - Monitor.gameSeen < 15 * 60_000L;
+        if (inGame) moveTaskToBack(true);
+        else {
+            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(p.joinLink())).setPackage("com.roblox.client")); }
+            catch (Exception x) { toast("Roblox not installed"); return; }
+        }
+        startWhenReady(inGame);
     }
+    /** Waits for the game, then runs the same preflight + engine as the panel's Start. Ready = the Honey/Pollen counters
+     *  read for 2 s in a row (a bright loading/join screen looked "playable" and Start found the Roblox menu still up,
+     *  live); screens whose counters never read (no-HUD) start when the wait runs out, if the frame looks like the game. */
+    void startWhenReady(boolean inGame) {
+        toast(inGame ? "Back to Bee Swarm: starting in a few seconds" : "Joining Bee Swarm: Start begins once the game has loaded");
+        new Thread(() -> {
+            long until = SystemClock.uptimeMillis() + (inGame ? 10_000 : 120_000), hudSince = 0; boolean ready = false;
+            while (!ready && SystemClock.uptimeMillis() < until) {
+                SystemClock.sleep(400);
+                Vision.Result r = Monitor.last; long now = SystemClock.uptimeMillis();
+                boolean fresh = r != null && now - Monitor.lastTime < 1500;
+                if (fresh && r.screen == Vision.Screen.GAME) { if (hudSince == 0) hudSince = now; ready = now - hudSince >= 2000; } else hudSince = 0;
+            }
+            if (!ready) { Vision.Result r = Monitor.last; ready = r != null && SystemClock.uptimeMillis() - Monitor.lastTime < 1500 && Vision.playable(r, true); }
+            MacroService s = MacroService.inst;
+            String why = s == null ? "input service stopped" : !ready ? "Open Bee Swarm (sideways) and press ▶ Start on the floating panel." : Engine.start(s);
+            if (why != null) { MacroService.startWhy = why; MacroService.startWhyAt = SystemClock.uptimeMillis(); runOnUiThread(() -> toast(why)); }
+        }, "start").start();
+    }
+
 
     // ------------------------------------------------------------------ Tokens
     void buildTokens() {

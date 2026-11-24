@@ -15,6 +15,8 @@ import java.util.Map;
 final class Monitor {
     static volatile Vision.Result last;
     static volatile long lastTime;
+    /** Uptime of the last frame that looked like Roblox's game (landscape, HUD read or a bright world), 0 = never. */
+    static volatile long gameSeen;
     /** One raw frame on request (Discord screenshots): set shotWanted, the next frame is copied here. */
     /** Red error banner check on the next raw frame (sprinkler placement). */
     /** Last time the Pollen counter's digits changed (tablet): pollen is coming in. */
@@ -184,6 +186,7 @@ final class Monitor {
                     boolean hud = r.screen == Vision.Screen.GAME && r.screenConf >= p.minConfidence;
                     boolean game = hud || Vision.playable(r, Engine.noHudNow);   // no-HUD mode: the world readers still run
                     long now = SystemClock.uptimeMillis();
+                    if (Vision.playable(r, true)) gameSeen = now;   // Roblox's game was on screen (the app's Start goes back to it)
                     if (game) {
                         Detector.Library lib = App.library(c);
                         double wx0 = ro.worldX0, wx1 = fw0 - ro.worldX0;   // same view angles on every screen shape (Remap)

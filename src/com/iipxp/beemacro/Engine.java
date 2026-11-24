@@ -30,6 +30,12 @@ final class Engine implements Runnable {
 
     /** Returns null when started, otherwise what needs attention. */
     static synchronized String start(MacroService s) {
+        // One run at a time: the app's Start and the panel's Start a second apart started two engines that both pressed
+        // Esc, so Roblox's menu opened and closed and each one gave up ("Couldn't respawn: Roblox didn't react to the
+        // keyboard"; Silly Admin report, S25+, 2026-11-23). This method is synchronized, so a second Start waits here
+        // for the first one's checks and then sees it running.
+        Engine cur = inst;
+        if (cur != null && !cur.finished()) { Log.add("start: a run is already going, not starting a second one"); return cur.paused ? "A run is already going (paused): press Resume." : "A run is already going."; }
         String acc = Account.check(s, true);   // signed in and not disabled by the admin
         if (acc != null) { Log.add("preflight: " + acc); return acc; }
         String why = preflight(s);
