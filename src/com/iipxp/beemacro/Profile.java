@@ -72,6 +72,11 @@ public final class Profile {
      *  before only showed the page and waited for Play, so a rejoin never got back in (Discord: "can't rejoin normal servers"). */
     public static final String BEE_SWARM = "roblox://experiences/start?placeId=1537690962";
     /** Roblox server link as typed or pasted: the link out of a whole message ("Join my server: …"), https, www. */
+    /** Android "Smallest width" the HUD readers were measured at: phones 360 (S23: 1080 px short side at 480 dpi),
+     *  tablets the Galaxy Tab S9 FE's own 822 (2304 x 1440 at 280 dpi, read with `adb shell wm density`; 1440 * 160 / 280). */
+    public static final int PHONE_SW = 360, TABLET_SW = 822;
+    /** The density (dpi) that gives a screen with this short side at least `targetDp` smallest width (rounded down). */
+    public static int densityFor(int shortPx, int targetDp) { return shortPx * 160 / targetDp; }
     public static String normLink(String u) {
         java.util.regex.Matcher um = java.util.regex.Pattern.compile("(https?://\\S+|roblox://\\S+)").matcher(u);
         if (um.find()) u = um.group(1);

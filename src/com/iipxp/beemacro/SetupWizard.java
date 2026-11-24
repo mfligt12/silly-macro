@@ -172,19 +172,22 @@ final class SetupWizard {
                 int sw = ScreenWidth.current(a);
                 boolean tab = ScreenWidth.tablet(a);
                 text(col, "In Roblox (in the game: menu → Settings):\n• Camera Mode → Classic\n• Shift Lock Switch → On\n\n"
-                        + (tab ? "Tablet: keep your screen's own Smallest width (now " + sw + " dp)."
+                        + (tab ? "Recommended on tablets: Smallest width " + ScreenWidth.target(a) + " dp, the Galaxy Tab S9 FE's (2304 × 1440 at 280 dpi), so Roblox draws its HUD like on the tablet the macro was measured on. Yours is now " + sw + " dp"
+                                 + (sw == ScreenWidth.target(a) ? " ✓" : ". Tap Set it for me (uses the key sender from step 1), then close and reopen Roblox.")
                                : "REQUIRED on phones: Smallest width 360 (Developer options; Samsung: Minimum width). Yours is now " + sw + " dp"
                                  + (sw == ScreenWidth.TARGET ? " ✓" : ". Tap Set it for me (uses the key sender from step 1), then close and reopen Roblox.")));
-                if (!tab && sw != ScreenWidth.TARGET) {
-                    btn(col, "Set it for me (360)", 0, v -> new Thread(() -> {
+                if (sw != ScreenWidth.target(a)) {
+                    int tw = ScreenWidth.target(a);
+                    btn(col, "Set it for me (" + tw + ")", 0, v -> new Thread(() -> {
                         String why = ScreenWidth.apply(a);
-                        a.runOnUiThread(() -> { if (why != null) a.toast(why); else { a.toast("Smallest width set to 360. Close and reopen Roblox."); open(page); } });
+                        a.runOnUiThread(() -> { if (why != null) a.toast(why); else { a.toast("Smallest width set to " + tw + ". Close and reopen Roblox."); open(page); } });
                     }).start());
                     btn(col, "Open Developer options", 0, v -> {
                         try { a.startActivity(new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)); } catch (Exception e) { a.toast("Turn on Developer options first (Build number ×7)"); }
                     });
                 }
-                check = () -> ScreenWidth.needed(a) ? "Smallest width is " + ScreenWidth.current(a) + " dp: it must be 360 (tap Set it for me)" : null;
+                check = () -> ScreenWidth.needed(a) ? "Smallest width is " + ScreenWidth.current(a) + " dp: it must be 360 (tap Set it for me)"
+                        : ScreenWidth.off(a) ? "Smallest width is " + ScreenWidth.current(a) + " dp: " + ScreenWidth.target(a) + " (Tab S9 FE) is recommended (tap Set it for me)" : null;
                 break;
             }
             case 8: {
