@@ -1472,7 +1472,9 @@ final class Engine implements Runnable {
     private void convert() {
         if (noHudNow && (p.noHudForced || waitFor(x -> bagKnown(x) && promptKnown(x), 2000) == null)) { convertTimed(); return; }
         Vision.Result r = waitFor(x -> bagKnown(x) && promptKnown(x), 4000);
-        if (r == null) { pause("Can't read backpack/hive prompt at hive"); checkpoint(); throw new Recover("convert: unreadable"); }
+        // Discord (Meiks, 1.0.19): "if I convert it pauses". The two pauses below stopped the whole run until Resume; a
+        // popup over the counters or a slow prompt is enough. Now: convert by E + waiting (the no-HUD way) instead.
+        if (r == null) { Log.add("convert: bag/prompt not readable at the hive, converting the no-HUD way"); convertTimed(true); return; }
         // the bag bar rounds a big bag down to 0%; the game's own "Make Honey" prompt means there is pollen to convert
         if (r.pollen < 1 && r.prompt != Vision.Prompt.TAP_RED && r.prompt != Vision.Prompt.TAP_BLUE) { Log.add("convert: backpack empty, nothing to convert"); return; }
         // "To Make Honey, Collect Pollen From Flower Fields" = the game says the bag is empty (field conversions -
@@ -1488,7 +1490,12 @@ final class Engine implements Runnable {
         }
         if (r.prompt == Vision.Prompt.TAP_BLUE) prompt();
         Vision.Result started = waitFor(x -> promptKnown(x) && x.prompt == Vision.Prompt.TAP_RED, 5000);
-        if (started == null) { pause("Conversion did not start (no 'Stop Making Honey')"); checkpoint(); throw new Recover("conversion not verified"); }
+        if (started == null) {   // E missed or the prompt was slow: once more, then the no-HUD way (never a pause)
+            Vision.Result now = Monitor.last;
+            if (now != null && promptKnown(now) && now.prompt == Vision.Prompt.TAP_BLUE) { Log.add("convert: honey making didn't start, pressing E again"); prompt(); }
+            started = waitFor(x -> promptKnown(x) && x.prompt == Vision.Prompt.TAP_RED, 5000);
+            if (started == null) { Log.add("convert: no 'Stop Making Honey' seen, converting the no-HUD way"); convertTimed(true); return; }
+        }
         stats.conversions++;
         ownsHive = true;   // only our own hive converts
         Log.add(String.format(Locale.US, "convert: started at %.0f%%", startPct));
@@ -1566,7 +1573,9 @@ final class Engine implements Runnable {
 
     /** No-HUD conversion: E on the pad, then stand there for the set time (nothing reads the bag). Bee Swarm stops
      *  making honey by itself when the bag is empty, so waiting longer only costs time. */
-    private void convertTimed() {
+    private void convertTimed() { convertTimed(false); }
+    /** fallback = called from the normal conversion (counters readable): don't stop because they're readable. */
+    private void convertTimed(boolean fallback) {
         resetBagWatch();
         prompt();
         stats.conversions++;
@@ -1591,7 +1600,7 @@ final class Engine implements Runnable {
             step = stillMaking && el >= p.noHudConvertSec * 1000L ? "Converting (no-HUD) · still making honey, waiting"
                  : "Converting (no-HUD) · " + Math.max(0, p.noHudConvertSec - el / 1000) + " s left";
             watchScreen(); sleep(1000);
-            if (!noHudNow && !p.noHudForced) { Log.add("convert: counters readable again, checking the bag"); break; }
+            if (!fallback && !noHudNow && !p.noHudForced) { Log.add("convert: counters readable again, checking the bag"); break; }
         }
         if (balloonDue()) convertBalloon();
     }
