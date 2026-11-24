@@ -119,7 +119,8 @@ public class MainActivity extends Activity {
             return;
         }
         p = App.profile(this);
-        if (checkSelfPermission("android.permission.POST_NOTIFICATIONS") != 0) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
+        // once only: asked on every open, the prompt landed on top of the game while Start was checking the screen and both Starts were refused ("Roblox menu is open" / "Turn the device sideways"; S23 live 2026-11-24)
+        if (checkSelfPermission("android.permission.POST_NOTIFICATIONS") != 0 && !p.notifAsked) { p.notifAsked = true; App.save(this); requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1); }
         getWindow().setStatusBarColor(Ui.BG1); getWindow().setNavigationBarColor(BG);
         wide = getResources().getConfiguration().screenWidthDp >= 640;
         if (Account.configured(this) && !Account.signedIn(this)) { buildLogin(); return; }
@@ -402,13 +403,17 @@ public class MainActivity extends Activity {
         // share link), Roblox takes it as "go to the home page" and leaves the game, and the check 3.5 s later saw the
         // phone still upright ("Turn the device sideways"). S23 live 2026-11-23; Silly Admin report (S25+): 35 min of
         // "not in Bee Swarm gameplay" after pressing Start. Game seen lately: step aside so Android shows it again.
-        boolean inGame = Monitor.gameSeen > 0 && SystemClock.uptimeMillis() - Monitor.gameSeen < 15 * 60_000L;
+        // Roblox itself drops the game after about a minute behind another app (S23 live 2026-11-24: 15 s away kept it,
+        // 90 s away came back on Roblox's home page with nothing sent to it), so "seen lately" means the last 45 s.
+        boolean inGame = Monitor.gameSeen > 0 && SystemClock.uptimeMillis() - Monitor.gameSeen < 45_000L;
         if (inGame) moveTaskToBack(true);
-        else {
-            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(p.joinLink())).setPackage("com.roblox.client")); }
-            catch (Exception x) { toast("Roblox not installed"); return; }
-        }
+        else if (!joinGame()) return;
         startWhenReady(inGame);
+    }
+    /** Opens the server link (private server, or a public Bee Swarm server) in Roblox. False if Roblox isn't installed. */
+    boolean joinGame() {
+        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(p.joinLink())).setPackage("com.roblox.client")); return true; }
+        catch (Exception x) { toast("Roblox not installed"); return false; }
     }
     /** Waits for the game, then runs the same preflight + engine as the panel's Start. Ready = the Honey/Pollen counters
      *  read for 2 s in a row (a bright loading/join screen looked "playable" and Start found the Roblox menu still up,
@@ -416,12 +421,14 @@ public class MainActivity extends Activity {
     void startWhenReady(boolean inGame) {
         toast(inGame ? "Back to Bee Swarm: starting in a few seconds" : "Joining Bee Swarm: Start begins once the game has loaded");
         new Thread(() -> {
-            long until = SystemClock.uptimeMillis() + (inGame ? 10_000 : 120_000), hudSince = 0; boolean ready = false;
+            long until = SystemClock.uptimeMillis() + (inGame ? 10_000 : 120_000), hudSince = 0; boolean ready = false, joined = !inGame;
             while (!ready && SystemClock.uptimeMillis() < until) {
                 SystemClock.sleep(400);
                 Vision.Result r = Monitor.last; long now = SystemClock.uptimeMillis();
                 boolean fresh = r != null && now - Monitor.lastTime < 1500;
                 if (fresh && r.screen == Vision.Screen.GAME) { if (hudSince == 0) hudSince = now; ready = now - hudSince >= 2000; } else hudSince = 0;
+                // stepped aside but Roblox shows its home page (portrait) after 4 s: the game was dropped, join it again
+                if (!joined && now > until - 6_000 && fresh && r.w < r.h) { joined = true; Log.add("start: Roblox had dropped the game, joining the server again"); runOnUiThread(this::joinGame); until = now + 120_000; }
             }
             if (!ready) { Vision.Result r = Monitor.last; ready = r != null && SystemClock.uptimeMillis() - Monitor.lastTime < 1500 && Vision.playable(r, true); }
             MacroService s = MacroService.inst;

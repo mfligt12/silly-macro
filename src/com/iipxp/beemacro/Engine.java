@@ -1115,7 +1115,11 @@ final class Engine implements Runnable {
             final boolean emptyBag = bag0 != null && bagKnown(bag0) && bag0.pollen < 1   // a reset costs nothing yet
                     && !phase.startsWith("Farming") && !fieldRecovering;                      // routes only: in the field the field guard decides
             if (left[0] > 150 * v) {
-                boolean hit = in.holdUntil(keys, (long) (left[0] / v) + 3000, () -> {
+                // time limit at base speed or slower: sized at the Haste speed, Haste running out mid-walk left the rest
+                // of the press too little time, the hold timed out and the run paused as "gesture rejected" (S23 live
+                // 2026-11-24: walking home at x1.5, Haste expired, paused 27 s in)
+                final long maxMs = (long) (left[0] / Math.min(v, 1.0)) + 3000, t0 = SystemClock.uptimeMillis();
+                boolean hit = in.holdUntil(keys, maxMs, () -> {
                     long now = SystemClock.uptimeMillis();
                     java.util.function.BooleanSupplier stopAt = walkStop;
                     if (stopAt != null && stopAt.getAsBoolean()) { walkStopped = true; left[0] = 0; return true; }
@@ -1149,7 +1153,12 @@ final class Engine implements Runnable {
                     throw new Recover(String.format(Locale.US, "walk: not moving for %.1f s (lag or stuck): resetting to start over", stillTotal[0] / 1000.0));
                 }
                 if (!hit && !lost[0]) {
-                    if (!stopped && !paused) return false;      // gesture rejected
+                    if (!stopped && !paused) {
+                        // ran the whole time limit (still walking, just slower than planned): walk what's left. A press
+                        // that fails at once is a real rejection (no key sender, Android refused the gesture).
+                        if (SystemClock.uptimeMillis() - t0 >= maxMs - 200 && left[0] > 20) { v = cur[0]; Log.add(String.format(Locale.US, "walk: slower than planned, walking the last %.1f tiles", left[0] / Moves.tileMs(1, p.moveSpeed))); continue; }
+                        return false;                           // gesture rejected
+                    }
                     checkpoint();                               // waits out a pause (throws on stop), then
                     continue;                                   // walks the rest of this press
                 }

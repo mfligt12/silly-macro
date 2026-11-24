@@ -113,6 +113,7 @@ public final class Profile {
     public int uiScale = 0;   // no longer used: the HUD is always measured (a hand-set value stopped phones measuring)
     public boolean advanced = false;
     public boolean shizukuOffered = false;
+    public boolean notifAsked = false;   // Android's notification prompt shown once (MainActivity)
     public boolean showTemp = true;
     public boolean keepAlive = true;          // idle at the hive: a harmless key every 45 s so Game Booster's touch lock stays away           // device temperature line under the overlay   // first-launch "Get Shizuku" offer shown once
     // Natro "Mondo Buff": in the first 14 min of each hour, stand beside Mountain Top for this long to get Mondo's blessing
