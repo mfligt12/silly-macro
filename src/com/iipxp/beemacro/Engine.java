@@ -261,13 +261,20 @@ final class Engine implements Runnable {
         // then straight to Pine Tree with no hive claimed"). E claims a free pad and does nothing harmful on our own, so
         // press it; with the counters readable, confirm it or start over rather than farm with nowhere to convert.
         if (r == null && !ownsHive) {
-            Log.add("hive: prompt not readable at slot " + p.hiveSlot + ", pressing E to claim it if it's free");
+            Log.add("hive: no prompt in sight at slot " + p.hiveSlot + ", pressing E to claim it if it's free");
             prompt(); sleep(2500);
-            if (noHudNow) { ownsHive = true; stats.hiveClaims++; return; }   // no-HUD: prompts can't be read, carry on
-            Vision.Result c = waitFor(x -> promptKnown(x), 5000);
+            Vision.Result last = Monitor.last;
+            if (last == null || last.screen != Vision.Screen.GAME) return;   // counters unreadable: prompts can't be read, carry on
+            Vision.Result c = waitFor(x -> promptKnown(x) && x.prompt != Vision.Prompt.NONE, 5000);
             if (c != null && ownHive(c)) { ownsHive = true; stats.hiveClaims++; Log.add("hive: claimed slot " + p.hiveSlot); return; }
             if (c != null && c.prompt == Vision.Prompt.TAP_CLAIM) { claimHere(); return; }
-            if (c == null) throw new Recover("no hive prompt in sight at slot " + p.hiveSlot + " after the camera reset: starting over instead of farming with no hive");
+            if (c == null) {
+                // No prompt with the counters readable = not on a pad. With no hive the respawn put us at the central
+                // spawn, which this device's learned pad zoom step mistook for the pad (S23 2026-11-24: walked the Pine
+                // route from the spawn into Mushroom field). Forget that step: the next reset walks from the spawn.
+                if (p.padZoomStep > 0) { Log.add("camera: no hive here, so that was the spawn: forgetting this device's pad step " + p.padZoomStep); p.padZoomStep = 0; App.save(in); }
+                throw new Recover("no hive prompt at slot " + p.hiveSlot + " after the camera reset: starting over instead of farming with no hive");
+            }
             r = c;   // readable now: fall through to the taken-slot handling
         }
         if (!p.autoHiveSlot || ownsHive) return;   // we own one elsewhere: respawning brings us to it
