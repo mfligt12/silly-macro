@@ -69,6 +69,8 @@ final class Engine implements Runnable {
         Vision.Mode mode = Vision.startMode(p.noHudForced, r, p.minConfidence, z.x > z.y);
         if (mode == Vision.Mode.BLOCKED) {
             if (z.y > z.x) return "Turn the device sideways: Bee Swarm must be in landscape.";
+            if (r.screen == Vision.Screen.DARK && CaptureService.contentHidden)
+                return "Screen capture is sharing a single app, not the whole screen, so it sees black. Settings → stop screen capture, then Home → 2 · Allow screen capture and pick \"Entire screen\".";
             if (r.screen == Vision.Screen.DARK)
                 return "Screen capture only sees a black screen. Settings → stop screen capture, then Home → 2 · Allow screen capture and pick \"Entire screen\" (not \"A single app\").";
             return "The Roblox menu is open: close it, then press Start.";
@@ -423,29 +425,35 @@ final class Engine implements Runnable {
         Log.add("sprinkler: still refused after 4 tries, farming without it");
         return false;
     }
-    /** Silver / Golden / Diamond (Discord: "placed once", silver sprinkler): each extra one further into the field,
-     *  then back to the first spot so the pattern starts where it always does. 2 tiles apart was too close for Bee Swarm
-     *  (Discord 11-24: "it puts the sprinkler too close so it can't place"): 4 tiles, and a red refusal banner steps
-     *  2 more and tries once again. ponytail: spacing is a guess from that report; tune if players still see refusals. */
+    /** Silver / Golden / Diamond (Discord: "placed once", silver sprinkler): the extras go on the corners of a square
+     *  reaching into the field, then back to the first spot so the pattern starts where it always does. Bee Swarm says
+     *  "Cannot place sprinklers this close to eachother." (S23 Diamond 11-24: 6 tiles refused, ~10 accepted; a line of 4
+     *  that far apart doesn't fit a field). A refusal steps 2 tiles further and tries again (twice). */
+    static final double SPRINKLER_GAP = 8;   // ponytail: measured bounds 6 < gap <= 10 on Pine Tree; tune from the refusal log
     private void placeMore(int extra, Moves.Key[] inward) {
-        Moves.Key[] back = new Moves.Key[inward.length];
-        for (int i = 0; i < inward.length; i++) back[i] = inward[i] == Moves.Key.W ? Moves.Key.S : inward[i] == Moves.Key.S ? Moves.Key.W : inward[i] == Moves.Key.A ? Moves.Key.D : Moves.Key.A;
-        double walked = 0;
-        for (int k = 1; k <= extra; k++) {
-            for (int attempt = 1; attempt <= 2; attempt++) {
-                double step = attempt == 1 ? 4 : 2;
-                walkHold(new Moves.Step('H', inward, 1.0, (int) Moves.tileMs(step, p.moveSpeed), null)); walked += step;
+        Moves.Key a = inward[0], b = inward.length > 1 ? inward[1] : (a == Moves.Key.W || a == Moves.Key.S ? Moves.Key.D : Moves.Key.S);
+        Moves.Key[] path = {a, b, Moves.flip(a)};   // square: (gap,0) → (gap,gap) → (0,gap)
+        double da = 0, db = 0;                     // how far we are from the first sprinkler along a and b
+        for (int k = 1; k <= Math.min(extra, 3); k++) {
+            Moves.Key dir = path[k - 1];
+            for (int attempt = 1; attempt <= 3; attempt++) {
+                double step = attempt == 1 ? SPRINKLER_GAP : 2;
+                walkHold(new Moves.Step('H', new Moves.Key[]{dir}, 1.0, (int) Moves.tileMs(step, p.moveSpeed), null));
+                if (dir == a) da += step; else if (dir == b) db += step; else da -= step;
                 sleep(500);
                 boolean ok = in.key(android.view.KeyEvent.KEYCODE_1 + p.sprinklerSlot - 1, 150); sleep(800);
                 boolean refused = redBanner() >= 4;
-                Log.add("sprinkler: extra " + k + "/" + extra + (attempt > 1 ? " on try 2" : "") + " (" + (ok ? "sent" : "NOT sent") + (refused ? ", refused by Bee Swarm" : "") + ")");
+                Log.add(String.format(Locale.US, "sprinkler: extra %d/%d at %.0f,%.0f tiles%s (%s%s)", k, extra, da, db, attempt > 1 ? " on try " + attempt : "",
+                        ok ? "sent" : "NOT sent", refused ? ", refused by Bee Swarm" : ""));
                 if (!refused) break;
                 stats.corrections++; saveGuardFrame("sprinkler_extra_refused");
                 long t0 = SystemClock.uptimeMillis();   // let the banner fade so the retry isn't read as refused too
                 while (redBanner() >= 4 && SystemClock.uptimeMillis() - t0 < 6000) sleep(400);
             }
         }
-        walkHold(new Moves.Step('H', back, 1.0, (int) Moves.tileMs(walked, p.moveSpeed), null));
+        if (da > 0.5) walkHold(new Moves.Step('H', new Moves.Key[]{Moves.flip(a)}, 1.0, (int) Moves.tileMs(da, p.moveSpeed), null));
+        if (da < -0.5) walkHold(new Moves.Step('H', new Moves.Key[]{a}, 1.0, (int) Moves.tileMs(-da, p.moveSpeed), null));
+        if (db > 0.5) walkHold(new Moves.Step('H', new Moves.Key[]{Moves.flip(b)}, 1.0, (int) Moves.tileMs(db, p.moveSpeed), null));
     }
     /** Rows of a red error banner on the next frame (0 if none or no frame in 1.5 s). */
     private int redBanner() {
