@@ -98,15 +98,18 @@ public final class Remap {
         if (w < h) return 0;
         int step = Math.max(4, w / 300), cols = w / step;
         for (int y = Math.max(5, (int) (0.03 * h)); y <= (int) (0.14 * h) && y + 4 < h; y++) {
-            int n = 0, hit = 0; double sum = 0;
+            int n = 0, hit = 0; double sum = 0, sq = 0;
             for (int x = step / 2; x < w; x += step) {
                 // the same ratio a little further out on both sides: a flat dark overlay, not an edge in the scene
                 int b = px[(y + 1) * w + x], b2 = px[(y + 4) * w + x], lb = Vision.lum(b), lb2 = Vision.lum(b2);
                 if (lb < 270 || lb2 < 270) continue;          // dark scenery: no ratio to read
                 n++; double q = Vision.lum(px[(y - 2) * w + x]) / (double) lb, q2 = Vision.lum(px[(y - 5) * w + x]) / (double) lb2;
-                if (q >= 0.5 && q <= 0.72 && q2 >= 0.5 && q2 <= 0.72) { hit++; sum += q; }
+                if (q >= 0.5 && q <= 0.72 && q2 >= 0.5 && q2 <= 0.72) { hit++; sum += q; sq += q * q; }
             }
             if (n < 0.3 * cols || hit < 0.7 * n) continue;
+            // a scrim dims every column by the same factor (measured 0.60 ± 0.01); a dark tree line or wall over a lit
+            // floor doesn't (two-frame false alarm walking to Pine Tree on the S23, 2026-11-24)
+            double mean = sum / hit; if (sq / hit - mean * mean > 0.03 * 0.03) continue;
             if (Math.abs(y - expect) > 1) return y;           // first sighting: wait for the next frame to agree
             double g = hit / sum;                             // 1 / mean ratio
             for (int i = 0; i < y * w; i++) {
