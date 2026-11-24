@@ -24,6 +24,9 @@ public final class Profile {
     public boolean autoHiveSlot = true;
     /** No-HUD mode (convert on a timer) even when the Honey/Pollen counters could be read. Off = only when they can't. */
     public boolean noHudForced = false;
+    /** First-run setup wizard: finished, and the page to resume on. moveSpeedTyped = the player typed their own speed. */
+    public boolean setupDone = false, moveSpeedTyped = false;
+    public int setupStep = 0;
     /** No-HUD mode: how long to stand at the hive converting after pressing E (no bag reading to tell when it's done). */
     public int noHudConvertSec = 150;
     /** Slots to try after `first`: 3 (straight ahead of spawn, the most tested) then the ones closest to it. */

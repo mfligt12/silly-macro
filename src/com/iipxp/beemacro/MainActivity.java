@@ -128,6 +128,9 @@ public class MainActivity extends Activity {
             if (why != null && !Account.signedIn(this)) runOnUiThread(this::recreate);
         }, "account").start();
 
+        // first-run setup until it's finished (players asked for every setting in one place before the app)
+        if (!p.setupDone) { new SetupWizard(this).show(); return; }
+
         FrameLayout frame = new FrameLayout(this);
         frame.setBackground(new Ui.HoneyBackground(this));
         frame.setFitsSystemWindows(true);
@@ -344,16 +347,7 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Starting the keyboard + mouse…", Toast.LENGTH_SHORT).show();
             new Thread(() -> { String m = ShizukuKeys.start(this); Log.add("shizuku: " + m); runOnUiThread(() -> Toast.makeText(this, m, Toast.LENGTH_LONG).show()); }).start();
         }));
-        c.addView(button("3 · Allow screen capture (pick \"Entire screen\")", PURPLE, v -> {
-            if (CaptureService.inst == null) {
-                MediaProjectionManager mpm = getSystemService(MediaProjectionManager.class);
-                // Android 14+ offers "A single app" first: the macro then sees a black screen ("dark", HUD not recognized). Ask for the whole screen.
-                startActivityForResult(android.os.Build.VERSION.SDK_INT >= 34
-                        ? mpm.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay())
-                        : mpm.createScreenCaptureIntent(), 7);
-            }
-            else toast("Screen capture already running");
-        }));
+        c.addView(button("3 · Allow screen capture (pick \"Entire screen\")", PURPLE, v -> requestCapture()));
         c.addView(button("4 · Pick your hive slot (Hive tab)", PURPLE, v -> show("hive", true)));
         c.addView(button("5 · Open Bee Swarm (your private server)", BLUE, v -> {
             showPanel();   // the panel's ✕ hid it for good before (Discord: "panel isn't popping up")
@@ -553,7 +547,7 @@ public class MainActivity extends Activity {
                         try {
                             double ms = Double.parseDouble(et.getText().toString().trim().replace(',', '.'));
                             if (ms < 10 || ms > 80) { toast("Move speed must be between 10 and 80"); return; }
-                            p.moveSpeed = Math.round(ms * 100) / 100.0; App.save(this); refresh(); toast("Move speed set to " + p.moveSpeed);
+                            p.moveSpeed = Math.round(ms * 100) / 100.0; p.moveSpeedTyped = true; App.save(this); refresh(); toast("Move speed set to " + p.moveSpeed);
                         } catch (NumberFormatException e) { toast("Type a number like 29.9"); }
                     }).setNegativeButton("Cancel", null).show();
         }));
@@ -705,6 +699,18 @@ public class MainActivity extends Activity {
         into.addView(whState);
     }
 
+    /** Screen capture consent (Home step 3 and the setup wizard). */
+    void requestCapture() {
+            if (CaptureService.inst == null) {
+                MediaProjectionManager mpm = getSystemService(MediaProjectionManager.class);
+                // Android 14+ offers "A single app" first: the macro then sees a black screen ("dark", HUD not recognized). Ask for the whole screen.
+                startActivityForResult(android.os.Build.VERSION.SDK_INT >= 34
+                        ? mpm.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay())
+                        : mpm.createScreenCaptureIntent(), 7);
+            }
+            else toast("Screen capture already running");
+            }
+
     void buildSettings() {
         page("settings");
         LinearLayout o = card("Floating overlay");
@@ -720,6 +726,12 @@ public class MainActivity extends Activity {
             public void onStopTrackingTouch(SeekBar s) { App.save(MainActivity.this); }
         });
         o.addView(sb);
+        LinearLayout su = card("Setup");
+        su.addView(tv("Walks you through Shizuku, Accessibility, screen capture, hive slot, move speed, sprinkler, Roblox settings, webhook and private server again.", 12, DIM));
+        su.addView(button("Run setup again", PURPLE, v -> {
+            Engine e = Engine.inst; if (e != null && !e.finished()) { toast("Stop the macro first"); return; }
+            p.setupDone = false; p.setupStep = 0; App.save(this); recreate();
+        }));
         LinearLayout dv = card("Your device");
         dv.addView(tv(deviceSummary(), 13, TXT));
         dv.addView(tv("Silly Macro reads Bee Swarm's HUD the way this screen draws it: it finds the Honey and Pollen "
