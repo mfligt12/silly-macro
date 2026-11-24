@@ -6,7 +6,7 @@ public final class SenderStatus {
      *  updated without pressing Home Ã¢â€ â€™ step 2 still had a sender without "hk": the sprinkler key then went out as an
      *  injected event, which Roblox ignores on a phone (sprinkler never placed). Raise this whenever the sender changes;
      *  the app restarts any older sender by itself before a run. 1 = "+hk", 2 = this version check. */
-    public static final int PROTO = 4;
+    public static final int PROTO = 5;   // 5: every key as a virtual USB keyboard report (HidKeys)
     /** "ok <emulator> (...) +hk +p2" -> the emulator text, and proto[0] = 2 (1 for a bare "+hk", 0 for neither).
      *  Null text when the reply isn't "ok ...". */
     public static String parse(String r, int[] proto) {

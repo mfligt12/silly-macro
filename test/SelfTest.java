@@ -1,3 +1,4 @@
+import com.iipxp.beemacro.HidKeys;
 import com.iipxp.beemacro.Report;
 import com.iipxp.beemacro.VisualAnchor;
 import com.iipxp.beemacro.FieldMessages;
@@ -801,6 +802,17 @@ public class SelfTest {
         for (int sp : new int[]{720, 1080, 1116, 1200, 1220, 1240, 1264, 1344, 1440}) swOk &= Math.abs(Profile.swOf(sp, Profile.densityFor(sp, Profile.PHONE_SW)) - 360) <= 1;
         for (int sp : new int[]{800, 1200, 1440, 1600, 1752, 1812, 1848, 2000}) swOk &= Math.abs(Profile.swOf(sp, Profile.densityFor(sp, Profile.TABLET_SW)) - 823) <= 3;   // small tablets: one dpi step is ~5 dp
         check(swOk, "smallest width: S23 360 dp = 480 dpi, Tab S9 FE 823 dp = its own 280 dpi (Android rounds), phones within 1 dp, tablets within 3");
+        { // every key as a USB keyboard report: W=0x1A A=0x04 S=0x16 D=0x07, Esc 0x29, Enter 0x28, Space 0x2C, E 0x08, R 0x15,
+          // 1 0x1E, 0 0x27, , 0x36, . 0x37, PgUp 0x4B, PgDn 0x4E, I 0x0C, O 0x12; Shift is the modifier bit; max 6 keys
+          boolean ok = HidKeys.usage(51) == 0x1A && HidKeys.usage(29) == 0x04 && HidKeys.usage(47) == 0x16 && HidKeys.usage(32) == 0x07
+                  && HidKeys.usage(111) == 0x29 && HidKeys.usage(66) == 0x28 && HidKeys.usage(62) == 0x2C && HidKeys.usage(33) == 0x08 && HidKeys.usage(46) == 0x15
+                  && HidKeys.usage(8) == 0x1E && HidKeys.usage(7) == 0x27 && HidKeys.usage(55) == 0x36 && HidKeys.usage(56) == 0x37
+                  && HidKeys.usage(92) == 0x4B && HidKeys.usage(93) == 0x4E && HidKeys.usage(37) == 0x0C && HidKeys.usage(43) == 0x12 && HidKeys.usage(3) == 0;
+          byte[] r = HidKeys.report(java.util.Arrays.asList(51, 32, HidKeys.SHIFT_LEFT));
+          ok &= r.length == 9 && r[0] == 1 && r[1] == 0x02 && r[3] == 0x1A && r[4] == 0x07 && r[5] == 0;
+          byte[] r8 = HidKeys.report(java.util.Arrays.asList(29, 30, 31, 32, 33, 34, 35, 36));
+          ok &= r8[8] == 0x09 && HidKeys.report(new java.util.ArrayList<Integer>())[3] == 0;
+          check(ok, "keys as USB keyboard reports: W/A/S/D, Esc, Enter, Space, E, R, numbers, camera, zoom mapped; Shift = modifier; 6 keys max"); }
         check(Profile.normLink("Join my server: http://roblox.com/share?code=ab12&type=Server thanks").equals("https://www.roblox.com/share?code=ab12&type=Server")
                 && Profile.normLink("roblox://experiences/start?placeId=1537690962").equals("roblox://experiences/start?placeId=1537690962")
                 && p.serverLinkDraft.isEmpty() && p.webhookDraft.isEmpty() && !p.setupDone && p.setupStep == 0 && !p.moveSpeedTyped,

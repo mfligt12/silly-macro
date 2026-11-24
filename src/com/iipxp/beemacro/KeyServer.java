@@ -91,15 +91,16 @@ public final class KeyServer {
                     out.println("ok"); continue;
                 }
                 if (p.length != 2) { out.println("unknown"); continue; }   // always answer: a silent sender froze the app's next send
-                if (p[0].equals("d")) { long t = SystemClock.uptimeMillis(); held.put(code, t); key(KeyEvent.ACTION_DOWN, code, t); }
-                else if (p[0].equals("u")) { Long t = held.remove(code); key(KeyEvent.ACTION_UP, code, t == null ? SystemClock.uptimeMillis() : t); }
+                // keys go out as the virtual USB keyboard's own reports where it exists (HidKeys); injected only as a fallback
+                if (p[0].equals("d")) { long t = SystemClock.uptimeMillis(); held.put(code, t); if (!hidPress(code, true)) key(KeyEvent.ACTION_DOWN, code, t); }
+                else if (p[0].equals("u")) { Long t = held.remove(code); if (!hidPress(code, false)) key(KeyEvent.ACTION_UP, code, t == null ? SystemClock.uptimeMillis() : t); }
                 out.println("ok");
             }
         } catch (Exception e) {
             System.out.println("client error: " + e);
         } finally {
             if (clickOwner == s) { clickOwner = null; autoClick(false, 0, 0); }
-            for (Map.Entry<Integer, Long> e : held.entrySet()) key(KeyEvent.ACTION_UP, e.getKey(), e.getValue());   // never leave a key held
+            for (Map.Entry<Integer, Long> e : held.entrySet()) if (!hidPress(e.getKey(), false)) key(KeyEvent.ACTION_UP, e.getKey(), e.getValue());   // never leave a key held
             if (mouseDown != 0) { mouse(false, mx, my, mouseDown); mouseDown = 0; }                               // nor the mouse button
         }
     }
@@ -198,15 +199,24 @@ public final class KeyServer {
     /** A key pressed on the virtual USB keyboard itself (HID report id 1: modifiers, reserved, 6 keys), the way a real
      *  keyboard sends it. Injected number keys didn't place the sprinkler on a phone without a real keyboard (S23,
      *  2026-11-22) while the tablet, which had one plugged in, did. Returns false when no virtual keyboard is up. */
+    /** Keys held on the virtual USB keyboard right now (one keyboard, whichever connection pressed them). */
+    static final java.util.LinkedHashSet<Integer> hidHeld = new java.util.LinkedHashSet<>();
+    /** Press or release a key on the virtual USB keyboard: the full report of everything held, like a real keyboard.
+     *  False when there's no virtual keyboard or the key isn't in HidKeys' table (the caller injects it instead). */
+    static boolean hidPress(int code, boolean down) {
+        if (!HidKeys.mapped(code) || (hid == null && uhid == null)) return false;
+        synchronized (hidHeld) {
+            if (down) hidHeld.add(code); else if (!hidHeld.remove(code)) return true;
+            try { report(HidKeys.report(hidHeld)); return true; }
+            catch (Exception e) { System.out.println("hid key failed: " + e); if (down) hidHeld.remove(code); return false; }
+        }
+    }
+    /** "hk": a number key tapped on the virtual keyboard (keeps any held walking keys held). */
     static boolean hidKey(int code, long ms) {
-        int u = code >= KeyEvent.KEYCODE_1 && code <= KeyEvent.KEYCODE_9 ? 0x1E + (code - KeyEvent.KEYCODE_1) : code == KeyEvent.KEYCODE_0 ? 0x27 : 0;
-        if (u == 0 || (hid == null && uhid == null)) return false;
-        try {
-            report(new byte[]{1, 0, 0, (byte) u, 0, 0, 0, 0, 0});
-            SystemClock.sleep(Math.max(40, ms));
-            report(new byte[]{1, 0, 0, 0, 0, 0, 0, 0, 0});
-            return true;
-        } catch (Exception e) { System.out.println("hid key failed: " + e); return false; }
+        if (code < KeyEvent.KEYCODE_0 || code > KeyEvent.KEYCODE_9 || !hidPress(code, true)) return false;
+        SystemClock.sleep(Math.max(40, ms));
+        hidPress(code, false);
+        return true;
     }
     static void mouseButton(boolean down) throws java.io.IOException { report(new byte[]{2, (byte) (down ? 1 : 0), 0, 0, 0}); }
 
