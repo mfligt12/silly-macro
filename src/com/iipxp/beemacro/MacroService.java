@@ -905,10 +905,15 @@ public class MacroService extends AccessibilityService {
             emu = Keys.emulatorState();
         }
         say("Key test: pressing Esc…");
-        long t = SystemClock.uptimeMillis();
-        Keys.tap(Keys.ESC, 60);
         boolean menu = false;
-        while (SystemClock.uptimeMillis() - t < 3000 && !menu) { SystemClock.sleep(150); Vision.Result r = Monitor.last; menu = r != null && Monitor.lastTime > t && r.screen == Vision.Screen.MENU; }
+        // Two tries: Android shows a one-time "Esc key … Settings" notice for a new keyboard and swallows that first Esc
+        // (S23, 2026-11-24: ✗ then ✓ right after)
+        for (int i = 0; i < 2 && !menu; i++) {
+            long t = SystemClock.uptimeMillis();
+            Keys.tap(Keys.ESC, 60);
+            while (SystemClock.uptimeMillis() - t < 3000 && !menu) { SystemClock.sleep(150); Vision.Result r = Monitor.last; menu = r != null && Monitor.lastTime > t && r.screen == Vision.Screen.MENU; }
+            if (!menu && i == 0) { Vision.Result r = Monitor.last; if (r != null && r.screen == Vision.Screen.MENU) { menu = true; break; } Log.add("keys: test: no menu on the first Esc, trying once more"); }
+        }
         if (menu) { SystemClock.sleep(400); Keys.tap(Keys.ESC, 60); }
         String result = menu ? "Key test ✓: Roblox reacts to the keys (Esc opened the menu)"
                 : "Key test ✗: Roblox ignored Esc. Key sender: " + (emu == null ? "unknown" : emu) + ". "
