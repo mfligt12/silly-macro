@@ -1,0 +1,36 @@
+// Silly Macro accounts. Paste into Firebase console -> Firestore Database -> Rules, put your admin UID below, Publish.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function isAdmin() { return request.auth != null && request.auth.uid == "qmfJrXPEWgPzHIxZ5AL6uEEz5b33"; }
+    function isOwner(uid) { return request.auth != null && request.auth.uid == uid; }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow list, delete: if isAdmin();
+      // a user creates their own record, only as not disabled
+      // PAUSED: new accounts can't create their record, so a fresh sign-up can't run the macro either.
+      // To un-pause, paste firestore.rules back in.
+      allow create: if isAdmin();
+      // a user may refresh their own email / lastSeen / device / version, never the admin fields
+      allow update: if isAdmin() || (isOwner(uid)
+                      && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['disabled', 'reason', 'changedAt', 'changedBy']));
+    }
+
+    // "Send report to the developer": a signed-in user may create a report about themselves, only these fields and
+    // within these sizes (src/.../Report.java); nobody but the admin may read, list or delete reports, and no one may edit one.
+    match /reports/{id} {
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.keys().hasOnly(['uid', 'createdAt', 'version', 'device', 'android', 'log', 'logLines', 'image'])
+                    && request.resource.data.keys().hasAll(['uid', 'createdAt', 'log'])
+                    && request.resource.data.createdAt is timestamp
+                    && request.resource.data.log is string && request.resource.data.log.size() <= 200000
+                    && (!('image' in request.resource.data) || (request.resource.data.image is bytes && request.resource.data.image.size() <= 150000))
+                    && (!('version' in request.resource.data) || (request.resource.data.version is string && request.resource.data.version.size() <= 40))
+                    && (!('device' in request.resource.data) || (request.resource.data.device is string && request.resource.data.device.size() <= 120))
+                    && (!('android' in request.resource.data) || (request.resource.data.android is string && request.resource.data.android.size() <= 60));
+      allow read, list, delete: if isAdmin();
+    }
+  }
+}

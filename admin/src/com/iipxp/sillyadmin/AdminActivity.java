@@ -78,6 +78,14 @@ public class AdminActivity extends Activity {
         r.addView(button("Reports", GOLD, v -> showReports()), new LinearLayout.LayoutParams(0, -2, 1));
         r.addView(button("Sign out", CARD, v -> { sp.edit().clear().apply(); showLogin(); }), new LinearLayout.LayoutParams(0, -2, 1));
         col.addView(r);
+        LinearLayout all = new LinearLayout(this);
+        all.addView(button("Disable everyone", RED, v -> new AlertDialog.Builder(this).setTitle("Disable every user?")
+                .setMessage("Every account except yours is disabled: their macro stops within about 5 minutes and they're signed out. They see:\n\n\"" + BULK_REASON + "\"")
+                .setPositiveButton("Disable everyone", (d, w) -> setAll(true)).setNegativeButton("Cancel", null).show()), new LinearLayout.LayoutParams(0, -2, 1));
+        all.addView(button("Enable everyone", GREEN, v -> new AlertDialog.Builder(this).setTitle("Enable everyone again?")
+                .setMessage("Re-enables the accounts \"Disable everyone\" turned off (anyone you disabled one by one stays disabled). They sign in again.")
+                .setPositiveButton("Enable", (d, w) -> setAll(false)).setNegativeButton("Cancel", null).show()), new LinearLayout.LayoutParams(0, -2, 1));
+        col.addView(all);
         search = edit("Search email or device", InputType.TYPE_CLASS_TEXT);
         search.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
@@ -158,6 +166,36 @@ public class AdminActivity extends Activity {
                 runOnUiThread(this::load);
             } catch (Fb.Error x) { runOnUiThread(() -> status.setText(Fb.explain(x.code))); }
             catch (org.json.JSONException x) { runOnUiThread(() -> status.setText("error")); }
+        }).start();
+    }
+
+    /** Shown to everyone the bulk switch turns off; also how "Enable everyone" knows which accounts it may turn back on
+     *  ("reason" is an admin-only field in firestore.rules, so a user can't put it on their own record). */
+    static final String BULK_REASON = "Silly Macro is paused for maintenance. It will be back in a few hours: watch #announcements on Discord.";
+
+    void setAll(boolean off) {
+        status.setText(off ? "Disabling everyone…" : "Enabling everyone…");
+        String me = sp.getString("uid", "");
+        new Thread(() -> {
+            int done = 0, failed = 0;
+            try {
+                String t = token();
+                List<JSONObject> got = fb.list(t, "users");
+                for (JSONObject u : got) {
+                    String name = u.optString("name"), uid = name.substring(name.lastIndexOf('/') + 1);
+                    boolean isOff = Fb.bool(u, "disabled");
+                    if (uid.equals(me)) continue;                                           // keep the admin's own macro working
+                    if (off ? isOff : !(isOff && BULK_REASON.equals(Fb.str(u, "reason")))) continue;
+                    try {
+                        JSONObject f = new JSONObject();
+                        f.put("disabled", Fb.b(off)); f.put("reason", Fb.s(off ? BULK_REASON : "")); f.put("changedAt", Fb.now()); f.put("changedBy", Fb.s(sp.getString("email", "") + " (everyone)"));
+                        fb.patch(t, "users/" + uid, f); done++;
+                        int n = done; runOnUiThread(() -> status.setText((off ? "Disabled " : "Enabled ") + n + "…"));
+                    } catch (Exception x) { failed++; }
+                }
+                int d = done, fl = failed;
+                runOnUiThread(() -> { status.setText((off ? "Disabled " : "Enabled ") + d + " users" + (fl > 0 ? ", " + fl + " failed (press again)" : "")); load(); });
+            } catch (Fb.Error x) { runOnUiThread(() -> status.setText(Fb.explain(x.code))); }
         }).start();
     }
 
