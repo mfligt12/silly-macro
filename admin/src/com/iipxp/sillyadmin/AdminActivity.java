@@ -208,6 +208,10 @@ public class AdminActivity extends Activity {
                     if (bm != null) { android.widget.ImageView iv = new android.widget.ImageView(this); iv.setImageBitmap(bm); iv.setAdjustViewBounds(true); col.addView(iv, new LinearLayout.LayoutParams(-1, -2)); }
                     else col.addView(tv("(no screenshot)", 12, DIM));
                     String log = Fb.str(d, "log");
+                    try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(getExternalFilesDir(null), "report_" + Fb.str(d, "createdAt").replace(':', '-') + ".txt"))) {
+                        o.write((st.getText() + "\n" + who + "\n\n" + log).getBytes("UTF-8"));
+                        if (img != null) try (java.io.FileOutputStream oi = new java.io.FileOutputStream(new java.io.File(getExternalFilesDir(null), "report_" + Fb.str(d, "createdAt").replace(':', '-') + ".jpg"))) { oi.write(img); }
+                    } catch (Exception ignored) {}             // copy for adb pull (Android/data/.../files)
                     LinearLayout r = new LinearLayout(this);
                     r.addView(button("Copy log", PURPLE, v -> {
                         ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(android.content.ClipData.newPlainText("Silly Macro log", log));

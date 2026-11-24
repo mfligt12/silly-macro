@@ -89,6 +89,31 @@ public final class Remap {
     public static boolean hudVisible(int[] px, int w, int h) { return locatePhone(px, w, h) != null || (tablet(w, h) && calibrate(px, w, h) > 0); }
 
     /** Find the Honey/Pollen pills (and the menu button) in a game frame. null when they aren't both there. */
+    /** Android's status bar shown over the game darkens the rows under it to ~60% (Samsung's scrim), cutting the
+     *  Honey/Pollen pills in half: the HUD was never found (Galaxy A53, 2026-11-24). Finds the band's sharp lower edge
+     *  and lifts the rows above it back, in place. Returns the band's height, 0 when there is none. */
+    public static int unscrim(int[] px, int w, int h) {
+        if (w < h) return 0;
+        int step = Math.max(4, w / 300), cols = w / step;
+        for (int y = Math.max(2, (int) (0.03 * h)); y <= (int) (0.14 * h) && y + 1 < h; y++) {
+            int n = 0, hit = 0; double sum = 0;
+            for (int x = step / 2; x < w; x += step) {
+                int a = px[(y - 2) * w + x], b = px[(y + 1) * w + x], lb = Vision.lum(b);
+                if (lb < 270) continue;                       // dark scenery: no ratio to read
+                n++; double q = Vision.lum(a) / (double) lb;
+                if (q >= 0.5 && q <= 0.72) { hit++; sum += q; }
+            }
+            if (n < 0.3 * cols || hit < 0.6 * n) continue;
+            double g = hit / sum;                             // 1 / mean ratio
+            for (int i = 0; i < y * w; i++) {
+                int p = px[i];
+                px[i] = (p & 0xFF000000) | Math.min(255, (int) (Vision.r(p) * g)) << 16 | Math.min(255, (int) (Vision.g(p) * g)) << 8 | Math.min(255, (int) (Vision.b(p) * g));
+            }
+            return y;
+        }
+        return 0;
+    }
+
     public static Phone locatePhone(int[] px, int w, int h) {
         int s = Math.max(2, h / 540), gw = w / s, gh = (int) (h * 0.3) / s;   // coarse grid (never finer than 2 px: white bridges glue the pills to bright scenery) finds the pieces; edges refined below
         boolean[] m = new boolean[gw * gh];

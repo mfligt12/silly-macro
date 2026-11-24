@@ -1337,6 +1337,9 @@ final class Engine implements Runnable {
                 Vision.Result mm = Monitor.last;
                 if (b == null && !(mm != null && mm.screen == Vision.Screen.MENU && mm.menuPeople)) {
                     Log.add("respawn: R gave no dialog and Respawn wasn't found on this menu - not clicking blind (could be Leave)");
+                    int[] sp = Monitor.shotPx;   // for the next report: what sits where Resume's blue should be
+                    if (sp != null) { int c = Vision.at(sp, Monitor.shotW, Monitor.shotH, 1540 / 2340.0, 450 / 1080.0, 0, 0), c2 = Vision.at(sp, Monitor.shotW, Monitor.shotH, 0.5, 450 / 1080.0, 0, 0);
+                        Log.add(String.format(Locale.US, "respawn: Resume spot %d,%d,%d · middle %d,%d,%d on %dx%d", Vision.r(c), Vision.g(c), Vision.b(c), Vision.r(c2), Vision.g(c2), Vision.b(c2), Monitor.shotW, Monitor.shotH)); }
                     in.key(Keys.ESC, 60); sleep(800); return false;
                 }
                 Log.add("respawn: R gave no dialog, clicking Respawn in the menu" + (b != null ? " (found next to Resume)" : " (usual spot)"));

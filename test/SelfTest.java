@@ -526,6 +526,17 @@ public class SelfTest {
               check(ph != null && Math.abs(ph.k - 1.01) < 0.02 && r.screen == Vision.Screen.GAME && Math.round(r.pollen) == 0,
                     "mic icon over Honey, HUD at 101%: " + (ph == null ? "HUD not found" : ph + " " + r.screen + " bag " + Math.round(r.pollen)));
           } }
+        { // Galaxy A53 report 2026-11-24: Android's status bar over the game (dark band over the top 89 px) cut the pills
+          // in half, the HUD was never found. 2400x1080 frames taken on the S23 with the screen size set to the A53's.
+          File sb = new File("test/fixtures/statusbar_2400.png"), clean = new File("test/fixtures/phone_2400.png");
+          if (sb.exists() && clean.exists()) {
+              BufferedImage im = ImageIO.read(sb); int w = im.getWidth(), h = im.getHeight(); int[] q = im.getRGB(0, 0, w, h, null, 0, w);
+              boolean before = Remap.locatePhone(q, w, h) == null; int band = Remap.unscrim(q, w, h); Remap.Phone ph = Remap.locatePhone(q, w, h);
+              BufferedImage im2 = ImageIO.read(clean); int[] q2 = im2.getRGB(0, 0, w, h, null, 0, w), q2c = q2.clone();
+              int band2 = Remap.unscrim(q2, w, h);
+              check(before && band > 80 && band < 100 && ph != null && Math.abs(ph.k - 1.0) < 0.02 && band2 == 0 && java.util.Arrays.equals(q2, q2c),
+                    "status bar over the game: band " + band + " px lifted, HUD " + ph + "; no band on a clean frame (" + band2 + ")");
+          } }
         { // taken hive: walk pad to pad (no respawn). Its net movement must equal spawn->`to` minus spawn->`from`, for
           // every pair of slots
           boolean ok = true; StringBuilder why = new StringBuilder();
