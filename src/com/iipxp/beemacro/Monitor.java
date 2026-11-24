@@ -100,7 +100,7 @@ final class Monitor {
         }
     }
     private static int phoneLike;
-    private static boolean scrimSeen;
+    private static boolean scrimSeen; private static int lastScrim;
     private static final List<Remap.Phone> phoneSamples = new ArrayList<>();
     /** Phones: find where this phone draws the HUD (3 matching readings), so other phones than the S23 read right. */
     private static void phoneStep(CaptureService.Frame f, long now) {
@@ -147,8 +147,9 @@ final class Monitor {
                 CaptureService.Frame f = cs == null ? null : cs.grab();
                 if (f == null) state = "no frame from capture";
                 else {
-                    int sb = Remap.unscrim(f.px, f.w, f.h);   // status bar over the game: lift its dark band first
-                    if (sb > 0 && !scrimSeen) { scrimSeen = true; Log.add("screen: Android's status bar is showing over the game (top " + sb + " px), reading through it"); }
+                    int sb = Remap.unscrim(f.px, f.w, f.h, lastScrim);   // status bar over the game: lift its dark band first
+                    boolean lifted = sb > 0 && Math.abs(sb - lastScrim) <= 1; lastScrim = sb;
+                    if (lifted && !scrimSeen) { scrimSeen = true; Log.add("screen: Android's status bar is showing over the game (top " + sb + " px), reading through it"); }
                     if (shotWanted) { shotPx = f.px.clone(); shotW = f.w; shotH = f.h; shotWanted = false; shotTime = SystemClock.uptimeMillis(); }
                     if (bannerWanted) { bannerRows = Vision.redBannerRows(f.px, f.w, f.h); bannerWanted = false; bannerTime = SystemClock.uptimeMillis(); }
                     String save = saveFrame;

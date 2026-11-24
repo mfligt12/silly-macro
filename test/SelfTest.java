@@ -531,11 +531,13 @@ public class SelfTest {
           File sb = new File("test/fixtures/statusbar_2400.png"), clean = new File("test/fixtures/phone_2400.png");
           if (sb.exists() && clean.exists()) {
               BufferedImage im = ImageIO.read(sb); int w = im.getWidth(), h = im.getHeight(); int[] q = im.getRGB(0, 0, w, h, null, 0, w);
-              boolean before = Remap.locatePhone(q, w, h) == null; int band = Remap.unscrim(q, w, h); Remap.Phone ph = Remap.locatePhone(q, w, h);
+              boolean before = Remap.locatePhone(q, w, h) == null; int[] qc = q.clone();
+              int first = Remap.unscrim(q, w, h, 0); boolean untouched = java.util.Arrays.equals(q, qc);   // one frame alone: not lifted
+              int band = Remap.unscrim(q, w, h, first); Remap.Phone ph = Remap.locatePhone(q, w, h);
               BufferedImage im2 = ImageIO.read(clean); int[] q2 = im2.getRGB(0, 0, w, h, null, 0, w), q2c = q2.clone();
-              int band2 = Remap.unscrim(q2, w, h);
-              check(before && band > 80 && band < 100 && ph != null && Math.abs(ph.k - 1.0) < 0.02 && band2 == 0 && java.util.Arrays.equals(q2, q2c),
-                    "status bar over the game: band " + band + " px lifted, HUD " + ph + "; no band on a clean frame (" + band2 + ")");
+              int band2 = Remap.unscrim(q2, w, h, 0);
+              check(before && untouched && band > 80 && band < 100 && ph != null && Math.abs(ph.k - 1.0) < 0.02 && band2 == 0 && java.util.Arrays.equals(q2, q2c),
+                    "status bar over the game: band " + band + " px lifted on the 2nd frame (1st untouched: " + untouched + "), HUD " + ph + "; no band on a clean frame (" + band2 + ")");
           } }
         { // taken hive: walk pad to pad (no respawn). Its net movement must equal spawn->`to` minus spawn->`from`, for
           // every pair of slots

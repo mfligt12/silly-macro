@@ -91,19 +91,23 @@ public final class Remap {
     /** Find the Honey/Pollen pills (and the menu button) in a game frame. null when they aren't both there. */
     /** Android's status bar shown over the game darkens the rows under it to ~60% (Samsung's scrim), cutting the
      *  Honey/Pollen pills in half: the HUD was never found (Galaxy A53, 2026-11-24). Finds the band's sharp lower edge
-     *  and lifts the rows above it back, in place. Returns the band's height, 0 when there is none. */
-    public static int unscrim(int[] px, int w, int h) {
+     *  and lifts the rows above it back, in place - only when the previous frame found it too (`expect`, ±1 row): a
+     *  single frame of scenery with a dark band on top (camera reset, live S23 2026-11-24) is left alone. Returns the
+     *  band's height found in this frame, 0 when there is none. */
+    public static int unscrim(int[] px, int w, int h, int expect) {
         if (w < h) return 0;
         int step = Math.max(4, w / 300), cols = w / step;
-        for (int y = Math.max(2, (int) (0.03 * h)); y <= (int) (0.14 * h) && y + 1 < h; y++) {
+        for (int y = Math.max(5, (int) (0.03 * h)); y <= (int) (0.14 * h) && y + 4 < h; y++) {
             int n = 0, hit = 0; double sum = 0;
             for (int x = step / 2; x < w; x += step) {
-                int a = px[(y - 2) * w + x], b = px[(y + 1) * w + x], lb = Vision.lum(b);
-                if (lb < 270) continue;                       // dark scenery: no ratio to read
-                n++; double q = Vision.lum(a) / (double) lb;
-                if (q >= 0.5 && q <= 0.72) { hit++; sum += q; }
+                // the same ratio a little further out on both sides: a flat dark overlay, not an edge in the scene
+                int b = px[(y + 1) * w + x], b2 = px[(y + 4) * w + x], lb = Vision.lum(b), lb2 = Vision.lum(b2);
+                if (lb < 270 || lb2 < 270) continue;          // dark scenery: no ratio to read
+                n++; double q = Vision.lum(px[(y - 2) * w + x]) / (double) lb, q2 = Vision.lum(px[(y - 5) * w + x]) / (double) lb2;
+                if (q >= 0.5 && q <= 0.72 && q2 >= 0.5 && q2 <= 0.72) { hit++; sum += q; }
             }
-            if (n < 0.3 * cols || hit < 0.6 * n) continue;
+            if (n < 0.3 * cols || hit < 0.7 * n) continue;
+            if (Math.abs(y - expect) > 1) return y;           // first sighting: wait for the next frame to agree
             double g = hit / sum;                             // 1 / mean ratio
             for (int i = 0; i < y * w; i++) {
                 int p = px[i];
