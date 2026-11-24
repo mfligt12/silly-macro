@@ -35,7 +35,7 @@ Stop with *Stop* on the panel; the red button is an emergency stop that releases
 
 | Problem | Fix |
 |---|---|
-| "Bee Swarm HUD not recognized" / UNKNOWN | Update to the latest version. Screen capture on with *Share entire screen*, Bee Swarm in landscape with the Honey/Pollen counters showing, wait a few seconds. Phones: Smallest width **360** (Settings → Smallest width → Set to 360, or Developer options → *Smallest width* / *Minimum width*). Tablets: **822**, the Galaxy Tab S9 FE's own value (2304 × 1440 at 280 dpi) that the tablet reader was measured on. Then restart Roblox. Since 1.0.16 the macro still starts if they can't be read, in **No-HUD mode** (farms for the field time, converts on a timer; Hive tab). |
+| "Bee Swarm HUD not recognized" / UNKNOWN | Update to the latest version. Screen capture on with *Share entire screen*, Bee Swarm in landscape with the Honey/Pollen counters showing, wait a few seconds. Phones: Smallest width **360** (Settings → Smallest width → Set to 360, or Developer options → *Smallest width* / *Minimum width*). Tablets: **823**, the Galaxy Tab S9 FE's own value (2304 × 1440 at 280 dpi) that the tablet reader was measured on. Then restart Roblox. Since 1.0.16 the macro still starts if they can't be read, in **No-HUD mode** (farms for the field time, converts on a timer; Hive tab). |
 | "Dark" / black screen | Settings → Stop screen capture, then Home step 3 → *Share entire screen*. |
 | Start does nothing | Read the ⚠ line on the floating panel: it says what's missing. |
 | Keeps opening the menu / respawn tab, or won't move | The keyboard + mouse isn't running: start Shizuku, then Home step 2. If it still doesn't move, close Roblox completely and reopen it. |

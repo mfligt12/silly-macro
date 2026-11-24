@@ -795,12 +795,12 @@ public class SelfTest {
                   && p0 == 0 && "hid tool (keyboard 12, mouse 12)".equals(e0) && en == null && pn == 0 && com.iipxp.beemacro.SenderStatus.PROTO > 1,
                   "key sender status: protocol read (2 / old +hk = 1 / none = 0), emulator text kept, older senders get restarted"); }
         check(Profile.file(dir).exists() && p.backpackThreshold == 90 && p.hiveSlot == 3, "profile created with defaults");
-        // Smallest width: phones 360 (S23 1080 px -> 480 dpi), tablets the Tab S9 FE's 822 (1440 px -> its own 280 dpi);
-        // other tablets land on 822 or just above (rounded down density), never below
-        int t1 = Profile.densityFor(1600, Profile.TABLET_SW), t2 = Profile.densityFor(1200, Profile.TABLET_SW), t3 = Profile.densityFor(1812, Profile.TABLET_SW);
-        check(Profile.densityFor(1080, Profile.PHONE_SW) == 480 && Profile.densityFor(1440, Profile.TABLET_SW) == 280 && 1440 * 160 / 280 == Profile.TABLET_SW
-                && 1600 * 160 / t1 >= 822 && 1600 * 160 / t1 <= 826 && 1200 * 160 / t2 >= 822 && 1200 * 160 / t2 <= 826 && 1812 * 160 / t3 >= 822 && 1812 * 160 / t3 <= 826,
-              "smallest width: S23 360 dp = 480 dpi, Tab S9 FE 822 dp = its own 280 dpi, other tablets set to 822-826 dp");
+        // Smallest width: phones 360 (S23 1080 px -> 480 dpi), tablets the Tab S9 FE's 823 (its own 280 dpi: Android
+        // rounds 822.86 up, read live sw823dp); every phone and tablet short side lands on its target exactly or within 1
+        boolean swOk = Profile.densityFor(1080, Profile.PHONE_SW) == 480 && Profile.densityFor(1440, Profile.TABLET_SW) == 280 && Profile.swOf(1440, 280) == 823;
+        for (int sp : new int[]{720, 1080, 1116, 1200, 1220, 1240, 1264, 1344, 1440}) swOk &= Math.abs(Profile.swOf(sp, Profile.densityFor(sp, Profile.PHONE_SW)) - 360) <= 1;
+        for (int sp : new int[]{800, 1200, 1440, 1600, 1752, 1812, 1848, 2000}) swOk &= Math.abs(Profile.swOf(sp, Profile.densityFor(sp, Profile.TABLET_SW)) - 823) <= 3;   // small tablets: one dpi step is ~5 dp
+        check(swOk, "smallest width: S23 360 dp = 480 dpi, Tab S9 FE 823 dp = its own 280 dpi (Android rounds), phones within 1 dp, tablets within 3");
         check(Profile.normLink("Join my server: http://roblox.com/share?code=ab12&type=Server thanks").equals("https://www.roblox.com/share?code=ab12&type=Server")
                 && Profile.normLink("roblox://experiences/start?placeId=1537690962").equals("roblox://experiences/start?placeId=1537690962")
                 && p.serverLinkDraft.isEmpty() && p.webhookDraft.isEmpty() && !p.setupDone && p.setupStep == 0 && !p.moveSpeedTyped,

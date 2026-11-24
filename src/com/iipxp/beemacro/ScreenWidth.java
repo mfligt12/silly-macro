@@ -13,7 +13,7 @@ import android.view.WindowManager;
  */
 final class ScreenWidth {
     static final int TARGET = Profile.PHONE_SW;
-    /** The width to use on this device: 360 on phones (required), the Tab S9 FE's 822 on tablets (recommended). */
+    /** The width to use on this device: 360 on phones (required), the Tab S9 FE's 823 on tablets (recommended). */
     static int target(Context c) { return tablet(c) ? Profile.TABLET_SW : TARGET; }
     /** This device isn't at its target width (phones: required, see needed(); tablets: a recommendation). */
     static boolean off(Context c) { return current(c) != target(c); }
@@ -53,7 +53,7 @@ final class ScreenWidth {
      *  smallest width is 360 by itself). Off: the phone's own size again, at Smallest width 360. Null when done. */
     static String s23(Context c, boolean on) {
         String why = sender(c); if (why != null) return why;
-        boolean tab = tablet(c);   // tablets: the Tab S9 FE's screen instead (2304 x 1440 at 280 dpi, smallest width 822)
+        boolean tab = tablet(c);   // tablets: the Tab S9 FE's screen instead (2304 x 1440 at 280 dpi, smallest width 823)
         int w = tab ? 1440 : 1080, h = tab ? 2304 : 2340, dpi = tab ? 280 : 480, own = Profile.densityFor(shortPx(c), target(c));
         if (on ? !Keys.setResolution(w, h, dpi) : !(Keys.setResolution(0, 0, 0) && Keys.setDensity(own)))
             return "The key sender couldn't change the resolution. Start Shizuku, then Home → step 2, and try again";

@@ -73,10 +73,16 @@ public final class Profile {
     public static final String BEE_SWARM = "roblox://experiences/start?placeId=1537690962";
     /** Roblox server link as typed or pasted: the link out of a whole message ("Join my server: …"), https, www. */
     /** Android "Smallest width" the HUD readers were measured at: phones 360 (S23: 1080 px short side at 480 dpi),
-     *  tablets the Galaxy Tab S9 FE's own 822 (2304 x 1440 at 280 dpi, read with `adb shell wm density`; 1440 * 160 / 280). */
-    public static final int PHONE_SW = 360, TABLET_SW = 822;
-    /** The density (dpi) that gives a screen with this short side at least `targetDp` smallest width (rounded down). */
-    public static int densityFor(int shortPx, int targetDp) { return shortPx * 160 / targetDp; }
+     *  tablets the Galaxy Tab S9 FE's own 823 (read from the tablet 2026-11-24: 1440 x 2304, density 280, sw823dp). */
+    public static final int PHONE_SW = 360, TABLET_SW = 823;
+    /** Android's smallest width for a short side at a density: it rounds (1440 px at 280 dpi = 822.86 -> 823). */
+    public static int swOf(int shortPx, int dpi) { return (int) (shortPx * 160.0 / dpi + 0.5); }
+    /** The density that gives exactly `targetDp` (the nearest one when no density hits it exactly). */
+    public static int densityFor(int shortPx, int targetDp) {
+        int d0 = (int) Math.round(shortPx * 160.0 / targetDp), best = d0;
+        for (int d = d0 - 3; d <= d0 + 3; d++) if (d > 0 && Math.abs(swOf(shortPx, d) - targetDp) < Math.abs(swOf(shortPx, best) - targetDp)) best = d;
+        return best;
+    }
     public static String normLink(String u) {
         java.util.regex.Matcher um = java.util.regex.Pattern.compile("(https?://\\S+|roblox://\\S+)").matcher(u);
         if (um.find()) u = um.group(1);
