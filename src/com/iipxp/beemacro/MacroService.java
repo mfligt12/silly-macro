@@ -663,6 +663,11 @@ public class MacroService extends AccessibilityService {
             reportBox.addView(reportImg, new LinearLayout.LayoutParams(-1, -2)); reportBox.addView(reportInfo); reportBox.addView(rr);
             rep.setOnClickListener(v -> prepareReport());
             expandedBox.addView(rep); expandedBox.addView(reportBox);
+            // "Do my keys reach Roblox?": Shizuku running doesn't mean Roblox takes the keys (Discord: menu opens and
+            // closes, character never moves, works only with a real keyboard). Esc must open the menu, seen by sight.
+            Button kt = small("Test keys (Esc opens the menu)", 0xFF2A2F45);
+            kt.setOnClickListener(v -> new Thread(this::testKeys, "key-test").start());
+            expandedBox.addView(kt);
         }
         expandedBox.addView(details);
         Button calT = small("Calibration keypad", 0xFF2A2F45);
@@ -883,6 +888,36 @@ public class MacroService extends AccessibilityService {
             });
         }, "report-send").start();
     }
+
+    /** Esc through the key sender, then the Roblox menu must show (and a second Esc closes it). Result on the panel and in the log. */
+    void testKeys() {
+        Engine e = Engine.inst;
+        if (e != null && !e.finished()) { say("Stop the macro first, then test the keys"); return; }
+        Vision.Result r0 = Monitor.last;
+        if (CaptureService.inst == null || r0 == null) { say("Key test: turn on screen capture first (Home step 3)"); return; }
+        if (r0.screen == Vision.Screen.MENU) { say("Key test: close the Roblox menu first, then test again"); return; }
+        if (!Keys.connect(this) || !Keys.ping()) { say("Key test ✗: the key sender isn't running. Start Shizuku, then Silly Macro Home → step 2"); return; }
+        String emu = Keys.emulatorState();
+        if (Keys.senderProto < SenderStatus.PROTO && ShizukuKeys.ready()) {   // an older sender sends keys the old way: restart it first
+            say("Key test: restarting the older key sender…"); Log.add("keys: restarting the older key sender for the test (" + ShizukuKeys.start(this) + ")");
+            SystemClock.sleep(1500);
+            if (!Keys.connect(this)) { say("Key test ✗: the key sender didn't come back. Home → step 2, then test again"); return; }
+            emu = Keys.emulatorState();
+        }
+        say("Key test: pressing Esc…");
+        long t = SystemClock.uptimeMillis();
+        Keys.tap(Keys.ESC, 60);
+        boolean menu = false;
+        while (SystemClock.uptimeMillis() - t < 3000 && !menu) { SystemClock.sleep(150); Vision.Result r = Monitor.last; menu = r != null && Monitor.lastTime > t && r.screen == Vision.Screen.MENU; }
+        if (menu) { SystemClock.sleep(400); Keys.tap(Keys.ESC, 60); }
+        String result = menu ? "Key test ✓: Roblox reacts to the keys (Esc opened the menu)"
+                : "Key test ✗: Roblox ignored Esc. Key sender: " + (emu == null ? "unknown" : emu) + ". "
+                  + (emu != null && emu.startsWith("none") ? "This phone doesn't let Shizuku make a virtual keyboard: plug in a USB or Bluetooth keyboard (it then works), or this phone can't be used."
+                     : "Be in Bee Swarm (not a menu), then Home → step 2 to restart the key sender and test again. Still ✗? Send a report (▢ → Send report).");
+        Log.add("keys: " + result.replace("Key test ", "test "));
+        say(result);
+    }
+    private void say(String m) { startWhy = m; startWhyAt = SystemClock.uptimeMillis(); toast(m); }
 
     LinearLayout row() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.HORIZONTAL); l.setGravity(Gravity.CENTER_VERTICAL); return l; }
     TextView text(String s, int sp, int color) { TextView t = new TextView(this); t.setText(s); t.setTextSize(sp); t.setTextColor(color); return t; }
