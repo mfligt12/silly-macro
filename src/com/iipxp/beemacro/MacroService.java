@@ -495,17 +495,19 @@ public class MacroService extends AccessibilityService {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(8), dp(6), dp(8), dp(8));
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xF0201C2B, 0xF0161A26});
-        bg.setCornerRadius(dp(14)); bg.setStroke(dp(1), 0x667C5CFF);
+        // Always a dark surface over the game (every app theme): readable over Bee Swarm, and the screen readers were
+        // tested with a dark panel. The accent follows the theme (Ui.PURPLE; Light's accent is used as is).
+        GradientDrawable bg = new GradientDrawable(); bg.setColor(0xF00E0F12);
+        bg.setCornerRadius(dp(18)); bg.setStroke(dp(1), 0x22FFFFFF);
         root.setBackground(bg);
         root.setAlpha(p.overlayAlpha);
 
         LinearLayout head = row();
-        TextView title = text("🐝 Silly Macro", 12, 0xFFB9A8FF); title.setTypeface(null, android.graphics.Typeface.BOLD);
+        TextView title = text("🐝 Silly Macro", 12, 0xFFF2F2F3); title.setTypeface(null, android.graphics.Typeface.BOLD);
         head.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-        Button exp = small("▢", 0xFF2A2F45); exp.setOnClickListener(v -> { p.overlayExpanded = !p.overlayExpanded; App.save(this); if (p.overlayExpanded) { reveal(expandedBox); fitOnScreen(); } else conceal(expandedBox, () -> expandedScroll.setLayoutParams(new LinearLayout.LayoutParams(-1, -2))); });
-        Button min = small("–", 0xFF2A2F45);
-        Button close = small("✕", 0xFF2A2F45);
+        Button exp = small("▢", NEUTRAL); exp.setOnClickListener(v -> { p.overlayExpanded = !p.overlayExpanded; App.save(this); if (p.overlayExpanded) { reveal(expandedBox); fitOnScreen(); } else conceal(expandedBox, () -> expandedScroll.setLayoutParams(new LinearLayout.LayoutParams(-1, -2))); });
+        Button min = small("–", NEUTRAL);
+        Button close = small("✕", NEUTRAL);
         Button miniStop = small("⛔", 0xFFD83A4A);
         miniStop.setOnClickListener(v -> { emergencyRelease(); if (Engine.inst != null) Engine.inst.stop("EMERGENCY STOP"); });
         close.setOnClickListener(v -> {
@@ -534,15 +536,15 @@ public class MacroService extends AccessibilityService {
             else { applyMin.run(); reveal(body); settle(); }                          // panel opens, then the content fades in
         });
         LinearLayout panel = root;
-        temp = text("🌡 …", 11, 0xFFB8BCD0);
+        temp = text("🌡 …", 11, 0xFF9A9BA3);
         temp.setVisibility(p.showTemp ? View.VISIBLE : View.GONE);
         panel.addView(temp);   // after the body: stays visible when the panel is minimized
         root = body;   // everything below goes inside the collapsible body
-        status = text("Idle", 12, 0xFFE8E8F0);
+        status = text("Idle", 12, 0xFFF2F2F3);
         root.addView(status);
 
         LinearLayout btns = row();
-        playBtn = small("▶ Start", 0xFF5B47E0);
+        playBtn = small("▶ Start", Ui.PURPLE);
         playBtn.setOnClickListener(v -> {
             Engine e = Engine.inst;
             if (e == null || e.finished()) {
@@ -555,7 +557,7 @@ public class MacroService extends AccessibilityService {
             }
             else if (e.paused) e.resume(); else e.pause("paused by you");
         });
-        Button stop = small("■ Stop", 0xFF2E6BD8);
+        Button stop = small("■ Stop", NEUTRAL_HI);
         stop.setOnClickListener(v -> { if (Engine.inst != null) Engine.inst.stop("stopped by you"); emergencyRelease(); });
         Button estop = small("⛔", 0xFFD83A4A);
         estop.setOnClickListener(v -> { emergencyRelease(); if (Engine.inst != null) Engine.inst.stop("EMERGENCY STOP"); });
@@ -565,12 +567,12 @@ public class MacroService extends AccessibilityService {
         root.addView(btns);
 
         // ---- field tab: which field to farm (Natro walking routes), right above the pattern tab
-        Button fieldTab = small("", 0xFF3A3350);
+        Button fieldTab = small("", NEUTRAL_HI);
         fieldTab.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(32)));
         fieldBox = new LinearLayout(this); fieldBox.setOrientation(LinearLayout.VERTICAL);
-        Button fPrev = small("◀", 0xFF2A2F45), fName = small("", 0xFF5B47E0), fNext = small("▶", 0xFF2A2F45);
-        Button fDefault = small("", 0xFF2A2F45);
-        TextView fNote = text("", 10, 0xFFB8BCD0);
+        Button fPrev = small("◀", NEUTRAL), fName = small("", Ui.PURPLE), fNext = small("▶", NEUTRAL);
+        Button fDefault = small("", NEUTRAL);
+        TextView fNote = text("", 10, 0xFF9A9BA3);
         fieldShow = () -> {
             int i = Routes.index(p.field); String[] d = Routes.DEFAULTS[i];
             fieldTab.setText("📍 Field: " + Routes.name(p.field) + (fieldBox.getVisibility() == View.VISIBLE ? "  ▾" : "  ▸"));
@@ -598,14 +600,14 @@ public class MacroService extends AccessibilityService {
 
         // ---- pattern tab: pick the farming pattern from the overlay (used from the next field run on)
         String[] pats = new String[Patterns.NAMES.length + 1]; pats[0] = "Skillet"; System.arraycopy(Patterns.NAMES, 0, pats, 1, Patterns.NAMES.length);
-        Button patTab = small("", 0xFF3A3350);
+        Button patTab = small("", NEUTRAL_HI);
         patTab.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(32)));
         patternBox = new LinearLayout(this); patternBox.setOrientation(LinearLayout.VERTICAL);
-        Button pPrev = small("◀", 0xFF2A2F45), pName = small("", 0xFF5B47E0), pNext = small("▶", 0xFF2A2F45);
-        Button pSize = small("", 0xFF2A2F45), wMinus = small("−", 0xFF2A2F45), wPlus = small("+", 0xFF2A2F45);
-        TextView wVal = text("", 12, 0xFFE8E8F0);
-        Button invFB = small("", 0xFF2A2F45), invLR = small("", 0xFF2A2F45);
-        TextView pNote = text("", 10, 0xFFB8BCD0);
+        Button pPrev = small("◀", NEUTRAL), pName = small("", Ui.PURPLE), pNext = small("▶", NEUTRAL);
+        Button pSize = small("", NEUTRAL), wMinus = small("−", NEUTRAL), wPlus = small("+", NEUTRAL);
+        TextView wVal = text("", 12, 0xFFF2F2F3);
+        Button invFB = small("", NEUTRAL), invLR = small("", NEUTRAL);
+        TextView pNote = text("", 10, 0xFF9A9BA3);
         patShow = () -> {
             boolean natro = !p.pattern.equals("Skillet");
             patTab.setText("🧭 Pattern: " + p.pattern + (natro ? " " + p.patternSize + " ×" + p.patternWidth : "") + (patternBox.getVisibility() == View.VISIBLE ? "  ▾" : "  ▸"));
@@ -642,21 +644,28 @@ public class MacroService extends AccessibilityService {
         root.addView(patternBox);
 
         expandedBox = new LinearLayout(this); expandedBox.setOrientation(LinearLayout.VERTICAL);
-        details = text("", 11, 0xFFB8BCD0);   // added below the buttons: a long buff list must not push them off screen
-        Button capOff = small("Stop screen capture", 0xFF2A2F45);
+        details = text("", 11, 0xFF9A9BA3);   // added below the buttons: a long buff list must not push them off screen
+        Button capOff = small("Stop screen capture", NEUTRAL);
         capOff.setOnClickListener(v -> {
             if (Engine.inst != null && !Engine.inst.finished()) Engine.inst.stop("screen capture stopped");
             emergencyRelease();
             if (CaptureService.inst != null) { CaptureService.stopCapture(this); toast("Screen capture stopped"); } else toast("Screen capture is not running");
         });
         expandedBox.addView(capOff);
+        // background music, same player as the app's Music tab (one instance)
+        LinearLayout mus = row();
+        Button mPlay = small("♪ Music", NEUTRAL), mNext = small("⏭", NEUTRAL);
+        mPlay.setOnClickListener(v -> { Music.get(this).toggle(); });
+        mNext.setOnClickListener(v -> Music.get(this).next(true));
+        mus.addView(mPlay, new LinearLayout.LayoutParams(0, dp(34), 1)); mus.addView(mNext, new LinearLayout.LayoutParams(dp(48), dp(34)));
+        expandedBox.addView(mus);
         if (Account.configured(this)) {   // same report as Settings → Debug, with a fresh in-game screenshot (panel hidden for it)
-            Button rep = small("Send report to the developer", 0xFF5B3FC4);
+            Button rep = small("Send report to the developer", Ui.PURPLE);
             reportBox = new LinearLayout(this); reportBox.setOrientation(LinearLayout.VERTICAL); reportBox.setVisibility(View.GONE);
             reportImg = new android.widget.ImageView(this); reportImg.setAdjustViewBounds(true);
-            reportInfo = text("", 11, 0xFFB8BCD0);
+            reportInfo = text("", 11, 0xFF9A9BA3);
             LinearLayout rr = row();
-            reportSend = small("Send", 0xFF7C3AED); Button cancel = small("Cancel", 0xFF2A2F45);
+            reportSend = small("Send", Ui.PURPLE); Button cancel = small("Cancel", NEUTRAL);
             reportSend.setOnClickListener(v -> sendReport());
             cancel.setOnClickListener(v -> { reportLog = null; reportJpeg = null; conceal(reportBox, null); });
             rr.addView(reportSend, new LinearLayout.LayoutParams(0, dp(34), 1)); rr.addView(cancel, new LinearLayout.LayoutParams(0, dp(34), 1));
@@ -665,12 +674,12 @@ public class MacroService extends AccessibilityService {
             expandedBox.addView(rep); expandedBox.addView(reportBox);
             // "Do my keys reach Roblox?": Shizuku running doesn't mean Roblox takes the keys (Discord: menu opens and
             // closes, character never moves, works only with a real keyboard). Esc must open the menu, seen by sight.
-            Button kt = small("Test keys (Esc opens the menu)", 0xFF2A2F45);
+            Button kt = small("Test keys (Esc opens the menu)", NEUTRAL);
             kt.setOnClickListener(v -> new Thread(this::testKeys, "key-test").start());
             expandedBox.addView(kt);
         }
         expandedBox.addView(details);
-        Button calT = small("Calibration keypad", 0xFF2A2F45);
+        Button calT = small("Calibration keypad", NEUTRAL);
         calT.setOnClickListener(v -> {
             boolean open = calBox.getVisibility() != View.VISIBLE;   // keypad replaces the details so the panel fits on screen
             calBox.setVisibility(open ? View.VISIBLE : View.GONE);
@@ -679,13 +688,13 @@ public class MacroService extends AccessibilityService {
         });
         expandedBox.addView(calT);
         calBox = new LinearLayout(this); calBox.setOrientation(LinearLayout.VERTICAL); calBox.setVisibility(View.GONE);
-        cal = text("", 11, 0xFF8FD3FF);
+        cal = text("", 11, Ui.CYAN);
         calBox.addView(cal);
         String[][] pad = {{"W+A", "W", "W+D", "Rot←"}, {"A", "SPACE", "D", "Rot→"}, {"S+A", "S", "S+D", "360°"}, {"Tilt↑", "Tilt↓", "W+SPACE"}, {"Route→Field", "Route→Hive"}};
         for (String[] r : pad) {
             LinearLayout rr = row();
             for (String k : r) {
-                Button bt = small(k, 0xFF262B3D); bt.setTextSize(11); bt.setOnClickListener(v -> calibrate(k));
+                Button bt = small(k, NEUTRAL); bt.setTextSize(11); bt.setOnClickListener(v -> calibrate(k));
                 LinearLayout.LayoutParams kl = new LinearLayout.LayoutParams(0, dp(30), 1); kl.setMargins(dp(1), dp(1), dp(1), dp(1));
                 rr.addView(bt, kl);
             }
@@ -696,7 +705,7 @@ public class MacroService extends AccessibilityService {
         expandedScroll = new android.widget.ScrollView(this); expandedScroll.addView(expandedBox);
         root.addView(expandedScroll);
 
-        TextView grip = text("⇲", 14, 0x887C5CFF); grip.setGravity(Gravity.END);
+        TextView grip = text("⇲", 14, 0x66FFFFFF); grip.setGravity(Gravity.END);
         root.addView(grip);
 
         lp = new WindowManager.LayoutParams(dp(p.overlayWidthDp), WindowManager.LayoutParams.WRAP_CONTENT,
@@ -924,18 +933,22 @@ public class MacroService extends AccessibilityService {
     }
     private void say(String m) { startWhy = m; startWhyAt = SystemClock.uptimeMillis(); toast(m); }
 
+    static final int NEUTRAL = 0xFF1E1F24, NEUTRAL_HI = 0xFF2A2B31;
+    /** Theme changed in the app: rebuild the panel with the new accent (same place, same open/closed sections). */
+    void restyle() { ui.post(() -> { if (overlay == null) return; removeOverlay(); showOverlay(true); }); }
     LinearLayout row() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.HORIZONTAL); l.setGravity(Gravity.CENTER_VERTICAL); return l; }
     TextView text(String s, int sp, int color) { TextView t = new TextView(this); t.setText(s); t.setTextSize(sp); t.setTextColor(color); return t; }
     Button small(String s, int color) {
         Button b = new Button(this); b.setText(s); b.setTextSize(12); b.setTextColor(Color.WHITE); b.setAllCaps(false);
         b.setPadding(dp(4), 0, dp(4), 0); b.setMinWidth(0); b.setMinimumWidth(0); b.setMinHeight(0); b.setMinimumHeight(0);
-        GradientDrawable d = new GradientDrawable(); d.setColor(color); d.setCornerRadius(dp(9)); b.setBackground(d);
+        GradientDrawable d = new GradientDrawable(); d.setColor(color); d.setCornerRadius(dp(17)); b.setBackground(d);
+        if (color == Ui.PURPLE && Ui.lum(color) > 0.6) b.setTextColor(0xFF0A0A0C);   // light accent: dark text
         LinearLayout.LayoutParams l = new LinearLayout.LayoutParams(-2, dp(34)); l.setMargins(dp(2), dp(3), dp(2), dp(3)); b.setLayoutParams(l);
         return b;
     }
     // ---- overlay motion: strong ease-out (0.23, 1, 0.32, 1); transform + opacity only; off when Android's animations are off
     static final android.view.animation.Interpolator EASE_OUT = new android.view.animation.PathInterpolator(0.23f, 1f, 0.32f, 1f);
-    static boolean motion() { return android.animation.ValueAnimator.areAnimatorsEnabled(); }
+    static boolean motion() { return Ui.motion(); }   // Settings → Animations, and Android's own switch
     /** Show a section: fades in while sliding down 6 dp from where it hangs (200 ms). */
     void reveal(View v) {
         v.animate().cancel();

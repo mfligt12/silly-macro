@@ -203,7 +203,7 @@ public class SelfTest {
         Detector.Library lib = new Detector.Library();
         List<Detector.Det> dets = Detector.detect(fpx, fw, fh, cat, lib, 0.8, null);
         long namedNoLabels = dets.stream().filter(d -> !d.label.equals("Unknown")).count();
-        boolean noHud = dets.stream().allMatch(d -> d.y0 >= 0.27 * fh - 8 && !(d.cx() < 0.31 * fw));
+        boolean noHud = dets.stream().allMatch(d -> d.y0 >= 0.27 * fh - 8 && !Detector.inHud(d.cx(), d.cy(), fw, fh));
         System.out.println("      wiki-only names in this frame: " + dets.stream().filter(d -> !d.label.equals("Unknown")).map(Detector.Det::text).collect(java.util.stream.Collectors.toList()));
         check(dets.size() >= 5 && noHud, "detector: " + dets.size() + " objects in a Pine Tree frame, none in the HUD; " + namedNoLabels + " named from wiki images alone");
         Detector.Det a0 = dets.get(0);
@@ -214,6 +214,65 @@ public class SelfTest {
         check(Detector.detect(fpx, fw, fh, cat, ig, 0.8, null).stream().noneMatch(d -> d.x0 == a0.x0 && d.y0 == a0.y0), "marked false detection (Ignore) -> no longer detected");
         List<int[]> ign = new java.util.ArrayList<>(); ign.add(new int[]{a0.x0 - 8, a0.y0 - 8, a0.x1 + 8, a0.y1 + 8});
         check(Detector.detect(fpx, fw, fh, cat, null, 0.8, ign).stream().noneMatch(d -> d.x0 == a0.x0 && d.y0 == a0.y0), "ignore rects (our own drawn boxes) are not detected");
+        // Red hive: red petals + yellow centres are ground in red fields only; priorities by name; adaptive weights
+        check(!Detector.ground(0xFFD82020) && Detector.ground(0xFFD82020, true) && Detector.ground(0xFF7A1A1A, true) && Detector.ground(0xFFF5DC40, true)
+                && !Detector.ground(0xFFFF7A00, true) && !Detector.ground(0xFFFF9A20, true) && !Detector.ground(0xFF202020, true), "red-field ground model: red/harvested petals and yellow centres are ground, orange flames and dark token rims are not");
+        {
+            BufferedImage ro = ImageIO.read(new File("test/fixtures/field_other.png")); int rw = ro.getWidth(), rh = ro.getHeight(); int[] rpx = ro.getRGB(0, 0, rw, rh, null, 0, rw);
+            List<Detector.Det> blueM = Detector.detect(rpx, rw, rh, cat, null, 0.8, null, true, false), redM = Detector.detect(rpx, rw, rh, cat, null, 0.8, null, true, true);
+            check(redM.size() < blueM.size() && redM.stream().allMatch(d -> d.label.equals("Unknown")), "red field frame: red ground model proposes fewer blobs (" + redM.size() + " vs " + blueM.size() + ") and names none without evidence");
+        }
+        {   // live Rose frames (S23 red account, 2026-11-24): the Flame Fuel ability button and flowers are never named;
+            // the red token lying on the left (outside the old D-pad zone) is proposed for review
+            int named = 0; boolean leftToken = false;
+            for (String rf : new String[]{"s23_rose_tokens2.png", "s23_rose_tokens5.png"}) {
+                BufferedImage ri = ImageIO.read(new File("test/fixtures/" + rf)); int rw2 = ri.getWidth(), rh2 = ri.getHeight();
+                for (Detector.Det d : Detector.detect(ri.getRGB(0, 0, rw2, rh2, null, 0, rw2), rw2, rh2, cat, null, 0.8, null, true, true)) {
+                    if (!d.label.equals("Unknown")) named++;
+                    if (rf.endsWith("5.png") && Math.abs(d.cx() - 175) < 80 && Math.abs(d.cy() - 470) < 60) leftToken = true;
+                }
+            }
+            check(named == 0 && leftToken, "live Rose frames: nothing named from wiki images alone (" + named + "), the red token on the left is proposed (" + leftToken + ")");
+        }
+        Profile rp = new Profile();
+        check(Detector.priority(rp, Detector.Cat.TOKEN, "Inferno") == rp.prioToken, "blue hive: Inferno uses the token category priority");
+        rp.applyRedHive();
+        check(rp.redHive() && rp.collectTokens == Profile.AI_GATHERING && !com.iipxp.beemacro.Routes.blueField(rp.field) && Detector.priority(rp, Detector.Cat.TOKEN, "Inferno") == rp.prioFlame
+                && Detector.priority(rp, Detector.Cat.MARK, "Pollen Mark") == rp.prioMarks && Detector.priority(rp, Detector.Cat.BOOST, "Rage") == rp.prioRedBoost
+                && Detector.priority(rp, Detector.Cat.BOOST, "Blue Boost") == 0, "red hive preset: red field, collection on, flame/marks/red boosts by name, blue boosts skipped");
+        rp.applyBlueHive(); check(!rp.redHive() && rp.field.equals("pinetree") && rp.pattern.equals("Skillet"), "back to blue hive: Pine Tree Skillet");
+        // Music: repeat/shuffle rules, playlist editing + file round trip, original built-in tracks
+        java.util.Random mr = new java.util.Random(3);
+        check(com.iipxp.beemacro.Playlists.next(2, 3, "all", false, mr, false) == 0 && com.iipxp.beemacro.Playlists.next(2, 3, "off", false, mr, false) == -1
+                && com.iipxp.beemacro.Playlists.next(1, 3, "one", false, mr, false) == 1 && com.iipxp.beemacro.Playlists.next(1, 3, "one", false, mr, true) == 2
+                && com.iipxp.beemacro.Playlists.next(2, 3, "off", false, mr, true) == 0 && com.iipxp.beemacro.Playlists.prev(0, 3) == 2, "music: repeat all wraps, off ends, one stays (Next still skips), previous wraps");
+        boolean noRepeat = true; for (int i = 0; i < 200; i++) if (com.iipxp.beemacro.Playlists.next(1, 4, "all", true, mr, false) == 1) noRepeat = false;
+        check(noRepeat && com.iipxp.beemacro.Playlists.next(0, 1, "all", true, mr, false) == 0, "music: shuffle never repeats the same track when there is a choice");
+        {
+            com.iipxp.beemacro.Playlists pl = new com.iipxp.beemacro.Playlists(); pl.ensureDefault();
+            com.iipxp.beemacro.Playlists.Playlist l2 = pl.create("Chill	mix"); l2.tracks.add(new com.iipxp.beemacro.Playlists.Track("content://x/1", "My song"));
+            pl.rename(1, "Chill"); com.iipxp.beemacro.Playlists.move(pl.lists.get(0).tracks, 0, 2);
+            File mf = File.createTempFile("music", ".txt"); pl.save(mf);
+            com.iipxp.beemacro.Playlists plBack = com.iipxp.beemacro.Playlists.load(mf); mf.delete();
+            check(plBack.lists.size() == 2 && plBack.lists.get(1).name.equals("Chill") && plBack.lists.get(1).tracks.get(0).uri.equals("content://x/1")
+                    && plBack.lists.get(0).tracks.get(2).uri.equals("builtin:0") && !pl.remove(5) && pl.remove(1) && !pl.remove(0), "music: playlists create/rename/reorder/save/load; the last playlist can't be removed");
+            short[] t0 = com.iipxp.beemacro.Playlists.synth(1, 8000, 4); int peak = 0; for (short v : t0) peak = Math.max(peak, Math.abs(v));
+            byte[] wv = com.iipxp.beemacro.Playlists.wav(t0, 8000);
+            check(peak > 3000 && peak < 32767 && wv.length == 44 + t0.length * 2 && new String(wv, 0, 4).equals("RIFF") && java.util.Arrays.equals(t0, com.iipxp.beemacro.Playlists.synth(1, 8000, 4)),
+                    "music: built-in track is generated (audible, not clipping, valid WAV, same every time)");
+        }
+        check(Detector.redGround(true, "rose", Vision.Field.UNKNOWN, true) && Detector.redGround(true, "rose", Vision.Field.OTHER_FIELD, false)
+                && !Detector.redGround(true, "rose", Vision.Field.UNKNOWN, false) && !Detector.redGround(false, "rose", Vision.Field.OTHER_FIELD, true)
+                && !Detector.redGround(true, "rose", Vision.Field.PINE_TREE, true) && !Detector.redGround(true, "pinetree", Vision.Field.UNKNOWN, true),
+                "red ground gate: red flowers seen, or farming a red field (mixed red/white Rose read UNKNOWN live); never blue hive / blue flowers");
+        Detector.Outcomes oc = new Detector.Outcomes(); oc.add("Inferno", false); oc.add("Inferno", false); oc.add("Inferno", false); oc.add("Rage", true);
+        check(Math.abs(oc.weight("Inferno") - 0.25) < 1e-9 && oc.weight("Rage") == 1 && oc.weight("Red Boost") == 1
+                && Detector.score(5, oc.weight("Inferno"), 50, 300, 0) < Detector.score(4, oc.weight("Rage"), 100, 300, 0), "adaptive: three missed Infernos rank below a reliably collected Rage");
+        check(Detector.score(5, 1, 280, 300, 0) > Detector.score(4, 1, 10, 300, 3) && Detector.score(3, 1, 30, 300, 0) > Detector.score(4, 1, 280, 300, 0)
+                && Detector.score(3, 1, 100, 300, 2) > Detector.score(3, 1, 100, 300, 0), "token choice: top tier first, near beats far below it, clusters get a bonus");
+        Profile tpr = new Profile(); tpr.applyRedHive();
+        check(Detector.priority(tpr, Detector.Cat.TOKEN, "Target Practice", new java.util.HashSet<>()) == Math.min(5, tpr.prioMarks + 2)
+                && Detector.priority(tpr, Detector.Cat.TOKEN, "Target Practice", new java.util.HashSet<>(java.util.Arrays.asList("Precision"))) == tpr.prioMarks, "buff-aware: Target Practice worth more while Precision is off");
         Detector.Det dA = new Detector.Det(); dA.x0 = 100; dA.y0 = 100; dA.x1 = 160; dA.y1 = 160; dA.conf = 0.9;
         Detector.Det dB = new Detector.Det(); dB.x0 = 110; dB.y0 = 105; dB.x1 = 165; dB.y1 = 158; dB.conf = 0.8;
         check(Detector.suppress(new java.util.ArrayList<>(java.util.Arrays.asList(dA, dB))).size() == 1, "one token found twice (overlapping boxes) -> one detection");
@@ -350,7 +409,7 @@ public class SelfTest {
         check(base == 20 && NavGuard.bagRose(base, 20.5) && !NavGuard.bagRose(base, 20.1), "guard: pollen rise still seen after a capacity change lowers the bag %");
         // ---- farming pattern presets (Natro Macro's pattern files, read by Patterns)
         { StringBuilder bad = new StringBuilder(); int ok = 0;
-          for (String n : Patterns.NAMES) {
+          for (String n : Patterns.NAMES) { if (n.equals(Patterns.AI)) continue;   // built in, no .ahk file
               try {
                   String psrc = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("assets/patterns/" + n + ".ahk")), "UTF-8");
                   java.util.List<Moves.Step> pst = Patterns.steps(psrc, 1, 3, false, false, false, 33.35);

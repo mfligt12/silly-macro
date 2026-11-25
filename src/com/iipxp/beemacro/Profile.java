@@ -12,6 +12,9 @@ import java.util.Properties;
  */
 public final class Profile {
     public static final String NAME = "PINE_TREE_MASTER_PROFILE";
+    /** AI token gathering (AI Tokens pattern, walking to tokens). Held back in 1.0.23: recognition of real red-field
+     *  tokens wasn't reliable enough yet (live S23 tests 2026-11-24). true = everything comes back as built. */
+    public static final boolean AI_GATHERING = false;
     public static final String PRESET = "Pine Tree Forest — Skillet";
 
     // Skillet originals (Dully176). Never edited at runtime.
@@ -170,6 +173,24 @@ public final class Profile {
     public boolean hastyGuard = false, giftedHasty = false;   // permanent speed boosts (Natro settings): only used to weigh Coconut Haste / Bear Morph       // Natro patterns: same, so Haste never stretches the pattern (Natro Walk() does this too)
     public boolean collectTokens = false;     // off until you have labelled tokens and checked the boxes
     public int prioBoost = 3, prioToken = 2, prioLoot = 2, prioMark = 1;   // 0 = never collect
+    // Red hive (Settings → Red Hive). Blue stays the default; nothing here changes a blue-hive run.
+    /** "blue" or "red". Red: the token detector treats red petals as ground (red fields) and collects by red priorities. */
+    public String hiveColor = "blue";
+    public int prioFlame = 5, prioMarks = 4, prioRedBoost = 4;   // Inferno/Flame Fuel · Pollen/Honey/Precise marks, Mark Surge, Target Practice · Red Boost, Rage, Red Bomb Sync, Red Pulse
+    /** Weigh each token name by how often it was really collected this run (see Detector.Outcomes). */
+    public boolean adaptiveTokens = true;
+    public boolean redHive() { return "red".equals(hiveColor); }
+    /** Switch to the red-hive setup: a red field with Natro's default pattern for it (only if a blue field was set),
+     *  token collection on. The blue settings stay saved and come back with applyBlueHive. */
+    public void applyRedHive() {
+        hiveColor = "red"; collectTokens = AI_GATHERING;
+        if (Routes.blueField(field)) { field = "rose"; fieldDefaults(); }
+    }
+    public void applyBlueHive() {
+        hiveColor = "blue";
+        if (!Routes.blueField(field)) { field = "pinetree"; pattern = "Skillet"; patternSize = "M"; patternWidth = 3; }
+    }
+    void fieldDefaults() { String[] d = Routes.DEFAULTS[Routes.index(field)]; pattern = d[0]; patternSize = d[1]; patternWidth = Integer.parseInt(d[2]); }
     public int maxCollectMs = 1500;           // walking budget per token (base-speed ms, ≈12 tiles)
     public float collectRange = 0.30f;        // max token distance from the player, fraction of screen height
     public float playerX = 0.50f, playerY = 0.60f;   // where your character stands on screen (shift lock on)
@@ -179,6 +200,18 @@ public final class Profile {
     public boolean driftCorrect = false;      // re-centre on a labelled LANDMARK (your sprinkler) after each loop
     public float driftTolerance = 0.10f;      // fraction of screen height
     public int maxCorrectMs = 1200;
+
+    // Appearance (Settings -> Appearance): theme "default" (Refined) / "dark" / "light" / "red" / "custom" + its accent
+    // (ARGB, 0 = default blue); animations 2 full / 1 reduced (no looping motion) / 0 off
+    public String theme = "default";
+    public int accentColor = 0, motionLevel = 2;
+
+    // Background music (Music tab). Playlists live in files/music.txt (Music.java); these are the player preferences.
+    public boolean musicOn = false, musicMute = false, musicShuffle = false, musicDuringRun = true, musicMini = true;
+    public int musicVolume = 60;                 // 0-100
+    public String musicRepeat = "all";           // off / all / one
+    public String musicDefault = "builtin:0";    // track played first when nothing was playing
+    public int musicPlaylist = 0, musicIndex = 0;
 
     // Overlay / app
     public float overlayAlpha = 0.92f;
@@ -207,6 +240,7 @@ public final class Profile {
                 else if (t == String.class) fl.set(p, v);
             } catch (Exception ignored) { }
         }
+        if (!AI_GATHERING && "AI Tokens".equals(p.pattern)) { p.fieldDefaults(); p.save(dir); }   // test builds only had it
         // the first builds shipped the developer's own private server as the default link: never send people there
         if (p.serverLink != null && p.serverLink.contains("516f383a1f44dd44a7c85242f14be297")) { p.serverLink = ""; p.save(dir); }
         return p;

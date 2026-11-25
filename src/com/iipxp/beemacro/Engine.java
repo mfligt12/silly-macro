@@ -43,6 +43,7 @@ final class Engine implements Runnable {
         if (why != null) return why;
         Engine e = new Engine(s);
         inst = e;
+        Music.runStarted(s);   // background music: keeps playing only if "Keep playing during runs" is on
         new Thread(e, "engine").start();
         return null;
     }
@@ -187,6 +188,7 @@ final class Engine implements Runnable {
             Stats.save(in, stats);
             phase = "Stopped"; done = true;
             Log.add("engine: end — " + stats.summary().replace('\n', ' '));
+            Music.runEnded();   // outside the app, the music stops with the run
             hook("session", "■ Macro stopped", (reason.isEmpty() ? "stopped" : reason) + "\n\n" + stats.summary(), Webhook.GREY, false);
         }
     }
@@ -1631,13 +1633,20 @@ final class Engine implements Runnable {
     /** The chosen farming pattern: Skillet, or a Natro Macro pattern read from assets/patterns (falls back to Skillet). */
     private boolean natroPattern;   // the last farmPattern() is a Natro pattern (not Skillet or the Skillet fallback)
     /** The pattern really running, for the panel (it said "Skillet" during every pattern: Discord "using CornerXSnake but it still uses Skillet"). */
-    private String patName() { return natroPattern ? p.pattern : "Skillet"; }
+    private String patName() { return aiTokens ? Patterns.AI : natroPattern ? p.pattern : "Skillet"; }
+    /** "AI Tokens" pattern: token collection is always on, wider reach, several tokens per step (Patterns.AI). */
+    private boolean aiTokens;
     private List<Moves.Step> farmPattern() {
-        natroPattern = false;
+        natroPattern = false; aiTokens = Profile.AI_GATHERING && p.pattern.equals(Patterns.AI);
         if (!p.pattern.equals("Skillet")) {
-            try (java.io.InputStream is = in.getAssets().open("patterns/" + p.pattern + ".ahk")) {
+            // AI Tokens: walk all over the field with that field's own Natro pattern (corner patterns become Snake:
+            // no corner line-up), chasing tokens as they pop up
+            String[] fd = Routes.DEFAULTS[Routes.index(p.field)];
+            String file = aiTokens ? (fd[0].startsWith("Corner") ? "Snake" : fd[0]) : p.pattern;
+            try (java.io.InputStream is = in.getAssets().open("patterns/" + file + ".ahk")) {
                 String src = new String(readAll(is), java.nio.charset.StandardCharsets.UTF_8);
-                List<Moves.Step> st = Patterns.steps(src, Patterns.size(p.patternSize), p.patternWidth, false, p.patternInvertFB, p.patternInvertLR, p.moveSpeed);
+                List<Moves.Step> st = Patterns.steps(src, Patterns.size(aiTokens ? fd[1] : p.patternSize), aiTokens ? Integer.parseInt(fd[2]) : p.patternWidth, false, p.patternInvertFB, p.patternInvertLR, p.moveSpeed);
+                if (aiTokens) { Log.add("farm: AI Tokens: " + file + " " + fd[1] + " over " + Routes.name(p.field) + " (" + st.size() + " steps), collecting tokens after every step"); nav = Routes.name(p.field) + " · " + Patterns.AI; natroPattern = true; return st; }
                 Log.add("farm: pattern " + p.pattern + " " + p.patternSize + " ×" + p.patternWidth + " (" + st.size() + " steps)");
                 nav = Routes.name(p.field) + " · " + p.pattern;
                 natroPattern = true;
@@ -1664,7 +1673,7 @@ final class Engine implements Runnable {
     private void farm() {
         List<Moves.Step> sk = farmPattern();
         hasteFix = natroPattern ? p.hastePatterns : p.hasteAdjustSkillet;
-        corner = natroPattern && cornerPlanned() ? cornerPlan(sk) : null;
+        corner = natroPattern && !aiTokens && cornerPlanned() ? cornerPlan(sk) : null;
         if (corner == null && cornerWanted()) {   // corner mode was planned but can't run: place the sprinkler the normal way (before the camera turn, like Natro)
             if (p.fieldRotate != 0) in.rotate(-p.fieldRotate);
             placeSprinkler();
@@ -1836,7 +1845,7 @@ final class Engine implements Runnable {
             if (corner != null) cornerAlign(loop == 1);
             // Drift by sight only where the pattern really closes: Skillet and corner mode line up on the hedges every
             // loop, so they end where the walls put them, not where they began (live: the anchor fought Skillet, 30%→44%)
-            if (loop == 1 && corner == null) { if (!sprinklerPlaced) Log.add("farm: no sprinkler placed this trip"); if (!wallBound()) setAnchor(); else Log.add("anchor: off here - the hedges line this pattern up every loop"); }
+            if (loop == 1 && corner == null) { if (!sprinklerPlaced) Log.add("farm: no sprinkler placed this trip"); if (aiTokens) Log.add("anchor: off for AI Tokens - every token walk is walked back"); else if (!wallBound()) setAnchor(); else Log.add("anchor: off here - the hedges line this pattern up every loop"); }
             for (int i = 0; i < sk.size(); i++) {
                 checkpoint();
                 Moves.Step s = sk.get(i);
@@ -1849,7 +1858,10 @@ final class Engine implements Runnable {
                 guardBag(r);
                 rate(r);
                 checkLost();
-                if (s.type == 'W' && !(r != null && bagKnown(r) && r.pollen >= p.backpackThreshold)) maybeCollect();
+                if (s.type == 'W' && !(r != null && bagKnown(r) && r.pollen >= p.backpackThreshold)) {
+                    if (aiTokens) { for (int k = 0; k < 4 && maybeCollect(); k++) { } }   // AI Tokens: token to token, up to 4 per step
+                    else maybeCollect();
+                }
                 boolean stall = stalledFull();
                 if (stall || (r != null && bagKnown(r) && r.pollen >= p.backpackThreshold)) {
                     double pct = r != null && bagKnown(r) && r.pollen >= p.backpackThreshold ? r.pollen : lastPct;
@@ -1913,23 +1925,31 @@ final class Engine implements Runnable {
     /** Where the character stands on screen (shift lock keeps it there). */
     private int[] anchor() { Vision.Result r = Monitor.last; int w = r == null ? 2340 : r.w, h = r == null ? 1080 : r.h; return new int[]{Math.round(p.playerX * w), Math.round(p.playerY * h), h}; }
 
-    static int prioOf(Profile p, Detector.Cat c) {
-        switch (c) { case BOOST: return p.prioBoost; case TOKEN: return p.prioToken; case LOOT: return p.prioLoot; case MARK: return p.prioMark; default: return 0; }
-    }
+    static int prioOf(Profile p, Detector.Det d) { return Detector.priority(p, d.cat, d.label); }
+    /** Per-name collection results of this run (adaptive target choice, Profile.adaptiveTokens). */
+    final Detector.Outcomes outcomes = new Detector.Outcomes();
 
     /** Best worthwhile token: CONFIRMED name (≥3 of 4 frames), not renamed, confident, visible now, in range;
-     *  priority first, then distance. Returns {track, number of candidates}. */
+     *  priority (red hive: flame / marks / red boosts by name) weighted by how often that token was really collected
+     *  this run, then distance. Returns {track, number of candidates}. */
     private Object[] target() {
         int[] a = anchor(); long now = SystemClock.uptimeMillis();
-        Detector.Tracker.Track best = null; double bs = -1; int n = 0;
+        Detector.Tracker.Track best = null; double bs = -Double.MAX_VALUE; int n = 0;
+        java.util.Set<String> buffs = new java.util.HashSet<>(); for (Buffs.Effect b : Monitor.activeBuffs()) buffs.add(b.name);
+        double range = (aiTokens ? Math.max(p.collectRange, 0.45f) : p.collectRange) * a[2];
+        java.util.List<Detector.Tracker.Track> cand = new java.util.ArrayList<>(); java.util.List<Integer> prs = new java.util.ArrayList<>();
         for (Detector.Tracker.Track t : Monitor.tracker.snapshot()) {
-            Detector.Det d = t.d; int pr = prioOf(p, d.cat);
+            Detector.Det d = t.d; int pr = Detector.priority(p, d.cat, d.label, buffs);
             if (d.buff || pr <= 0 || t.confirmed() == null || t.renamed || now - t.last > 300 || d.conf < p.boxMinConf) continue;
-            double dist = Math.hypot(d.cx() - a[0], d.cy() - a[1]);
-            if (dist > p.collectRange * a[2]) continue;
-            n++;
-            double s = pr * 10_000 - dist;
-            if (s > bs) { bs = s; best = t; }
+            if (Math.hypot(d.cx() - a[0], d.cy() - a[1]) > range) continue;
+            cand.add(t); prs.add(pr);
+        }
+        n = cand.size();
+        for (int i = 0; i < n; i++) {
+            Detector.Det d = cand.get(i).d; int near = 0;
+            for (Detector.Tracker.Track o : cand) if (o != cand.get(i) && Math.hypot(o.d.cx() - d.cx(), o.d.cy() - d.cy()) < 0.08 * a[2]) near++;
+            double s = Detector.score(prs.get(i), p.adaptiveTokens ? outcomes.weight(cand.get(i).confirmed()) : 1, Math.hypot(d.cx() - a[0], d.cy() - a[1]), range, near);
+            if (s > bs) { bs = s; best = cand.get(i); }
         }
         return new Object[]{best, n};
     }
@@ -1937,21 +1957,23 @@ final class Engine implements Runnable {
     /** Collect one token if worth it: steer toward it in short D-pad presses (re-aimed every frame), then walk the
      *  same presses back reversed so Skillet resumes where it left off. Outcome: collected (vanished at the player
      *  after we reached it), still visible, disappeared (away from the player), unverified. Only "collected" counts. */
-    private void maybeCollect() {
-        if (!p.collectTokens) return;
+    /** @return true if a token was chased (whatever the outcome), false if there was nothing worth it. */
+    private boolean maybeCollect() {
+        if (!Profile.AI_GATHERING || (!p.collectTokens && !aiTokens)) return false;   // AI token gathering held back (Profile)
         Object[] tg = target();
         Detector.Tracker.Track t = (Detector.Tracker.Track) tg[0];
-        if (t == null) return;
+        if (t == null) return false;
         String name = t.confirmed(); int id = t.id; double conf = t.d.conf;
         int[] a = anchor();
         int dist = (int) Math.hypot(t.d.cx() - a[0], t.d.cy() - a[1]);
         decide("Collecting token", ((int) tg[1] > 1 ? tg[1] + " nearby tokens detected. Prioritizing the reachable high-value token." : "Reachable token in range."),
-                String.format(Locale.US, "%s %.2f, track #%d, %d px away, priority %d", name, conf, id, dist, prioOf(p, t.d.cat)), "walk at most " + p.maxCollectMs + " ms, then return to route", conf);
+                String.format(Locale.US, "%s %.2f, track #%d, %d px away, priority %d, success weight %.2f", name, conf, id, dist, prioOf(p, t.d), outcomes.weight(name)), "walk at most " + p.maxCollectMs + " ms, then return to route", conf);
         phase = "Collecting " + name;
         long t0 = SystemClock.uptimeMillis(), walked = 0;
         java.util.List<Object[]> path = new java.util.ArrayList<>();
         boolean reached = false, gone = false;
-        while (walked < p.maxCollectMs) {
+        long budget = aiTokens ? Math.max(p.maxCollectMs, 2500) : p.maxCollectMs;
+        while (walked < budget) {
             checkpoint();
             Detector.Tracker.Track cur = null;
             for (Detector.Tracker.Track x : Monitor.tracker.snapshot()) if (x.id == id) cur = x;
@@ -1983,9 +2005,11 @@ final class Engine implements Runnable {
         }
         long ms = SystemClock.uptimeMillis() - t0;
         stats.token(name, outcome.equals("collected"), ms);
+        if (!outcome.startsWith("unverified")) outcomes.add(name, outcome.equals("collected"));   // unverified teaches nothing
         prevResult = name + ": " + outcome + " (" + ms + " ms)";
         Log.add("token: " + prevResult + String.format(Locale.US, " conf %.2f", conf));
         phase = "Farming";
+        return true;
     }
 
     /** End of a Skillet loop (camera back to its start angle): if your labelled landmark (sprinkler, placed at the

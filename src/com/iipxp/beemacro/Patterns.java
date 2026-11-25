@@ -17,7 +17,12 @@ import java.util.regex.Pattern;
  * FB = forward/back, LR = left/right; with no inversion TCFB = W, AFCFB = S, TCLR = A, AFCLR = D. Pure Java.
  */
 public final class Patterns {
-    public static final String[] NAMES = {"CornerXSnake", "Snake", "Lines", "Squares", "Diamonds", "e_lol", "Auryn",
+    /** Not a Natro pattern: the AI token farming mode (Engine). It walks all over the field with that field's own
+     *  Natro pattern (corner ones as Snake), and after every step walks to the best tokens it sees, then back. */
+    public static final String AI = "AI Tokens";
+    /** Pattern pickers: AI Tokens only while AI gathering is on (Profile.AI_GATHERING). */
+    public static final String[] NAMES = Profile.AI_GATHERING ? new String[]{AI, "CornerXSnake", "Snake", "Lines", "Squares", "Diamonds", "e_lol", "Auryn", "Fork", "SuperCat", "XSnake", "Slimline", "Stationary"}
+            : new String[]{"CornerXSnake", "Snake", "Lines", "Squares", "Diamonds", "e_lol", "Auryn",
             "Fork", "SuperCat", "XSnake", "Slimline", "Stationary"};
     public static final String[] SIZES = {"XS", "S", "M", "L", "XL"};
 

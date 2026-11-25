@@ -45,23 +45,23 @@ final class SetupWizard {
         a.setContentView(frame);
         a.root = col;   // the app's card() adds to this
 
-        col.addView(a.tv("Set up Silly Macro · step " + (i + 1) + " of " + TITLES.length, 13, MainActivity.DIM));
+        col.addView(a.tv("Set up Silly Macro · step " + (i + 1) + " of " + TITLES.length, 13, a.DIM));
         LinearLayout bar = new LinearLayout(a);   // progress
-        View done = new View(a); done.setBackground(Ui.pill(a, MainActivity.PURPLE, Ui.CYAN, 2));
-        View left = new View(a); left.setBackgroundColor(0x33FFFFFF);
+        View done = new View(a); done.setBackground(Ui.pill(a, a.PURPLE, Ui.CYAN, 2));
+        View left = new View(a); left.setBackgroundColor(Ui.STROKE);
         bar.addView(done, new LinearLayout.LayoutParams(0, a.dp(4), i + 1)); bar.addView(left, new LinearLayout.LayoutParams(0, a.dp(4), TITLES.length - i - 1));
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-1, a.dp(4)); blp.topMargin = a.dp(6); col.addView(bar, blp);
-        TextView title = a.tv(TITLES[i], 24, MainActivity.TXT); title.setTypeface(Typeface.DEFAULT_BOLD); title.setPadding(0, a.dp(14), 0, a.dp(4));
+        TextView title = a.tv(TITLES[i], 24, a.TXT); title.setTypeface(Typeface.DEFAULT_BOLD); title.setPadding(0, a.dp(14), 0, a.dp(4));
         col.addView(title);
 
         body(i, col);
 
-        status = a.tv("", 14, MainActivity.DIM); status.setPadding(0, a.dp(14), 0, a.dp(6));
+        status = a.tv("", 14, a.DIM); status.setPadding(0, a.dp(14), 0, a.dp(6));
         col.addView(status);
         LinearLayout nav = a.row(); nav.setPadding(0, a.dp(8), 0, 0);
         if (i > 0) nav.addView(a.button("Back", 0, v -> open(page - 1)), new LinearLayout.LayoutParams(0, a.dp(52), 1));
         boolean last = i == TITLES.length - 1;
-        nav.addView(a.button(last ? "Finish" : i == 8 ? "Next (or skip)" : "Next", MainActivity.PURPLE, v -> next()), new LinearLayout.LayoutParams(0, a.dp(52), 1));
+        nav.addView(a.button(last ? "Finish" : i == 8 ? "Next (or skip)" : "Next", a.PURPLE, v -> next()), new LinearLayout.LayoutParams(0, a.dp(52), 1));
         col.addView(nav);
         live();
     }
@@ -103,7 +103,7 @@ final class SetupWizard {
         a.recreate();
     }
 
-    private void text(LinearLayout col, String s) { TextView t = a.tv(s, 15, MainActivity.TXT); t.setPadding(0, a.dp(6), 0, a.dp(6)); t.setLineSpacing(0, 1.15f); col.addView(t); }
+    private void text(LinearLayout col, String s) { TextView t = a.tv(s, 15, a.TXT); t.setPadding(0, a.dp(6), 0, a.dp(6)); t.setLineSpacing(0, 1.15f); col.addView(t); }
     private Button btn(LinearLayout col, String s, int c, View.OnClickListener l) { Button b = a.button(s, c, l); col.addView(b, new LinearLayout.LayoutParams(-1, a.dp(52))); return b; }
 
     private void body(int i, LinearLayout col) {
@@ -115,7 +115,7 @@ final class SetupWizard {
             case 1:
                 text(col, "1. Install Shizuku.\n2. Settings → About phone → Software information → tap Build number 7 times (Developer options).\n3. Developer options → Wireless debugging → On (Wi-Fi needed).\n4. Shizuku → Pairing, then Wireless debugging → Pair device with pairing code, type the code into Shizuku's notification.\n5. Shizuku → Start.\n6. Then press the button below and allow Silly Macro in Shizuku's popup (Allow all the time).\n\nAfter every phone restart: Shizuku → Start, then Home step 2.");
                 if (!a.shizukuInstalled()) btn(col, "Get Shizuku", 0, v -> a.getShizuku());
-                btn(col, "Start the keyboard + mouse", MainActivity.PURPLE, v -> {
+                btn(col, "Start the keyboard + mouse", a.PURPLE, v -> {
                     a.toast("Starting the keyboard + mouse…");
                     new Thread(() -> { String m = ShizukuKeys.start(a); Log.add("shizuku: " + m); a.runOnUiThread(() -> a.toast(m)); }).start();
                 });
@@ -123,24 +123,24 @@ final class SetupWizard {
                 break;
             case 2:
                 text(col, "Silly Macro uses an Accessibility service for its floating panel (Start / Stop / emergency stop). Open Accessibility, tap Silly Macro, switch it on and tap Allow.\n\nSwitch greyed out (\"Controlled by Restricted setting\")? Tap App info below → ⋮ (top right) → Allow restricted settings, then try again.");
-                btn(col, "Open Accessibility", MainActivity.PURPLE, v -> a.startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+                btn(col, "Open Accessibility", a.PURPLE, v -> a.startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
                 btn(col, "App info (Allow restricted settings)", 0, v -> a.startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + a.getPackageName()))));
                 check = () -> MacroService.inst != null ? null : "Silly Macro isn't switched on in Accessibility yet";
                 break;
             case 3:
                 text(col, "The macro reads Bee Swarm from the screen. Press the button and pick \"Entire screen\" (not \"A single app\": that gives a black screen).\n\nAfter every update of Silly Macro, allow it again (Home step 3).");
-                btn(col, "Allow screen capture", MainActivity.PURPLE, v -> a.requestCapture());
+                btn(col, "Allow screen capture", a.PURPLE, v -> a.requestCapture());
                 check = () -> CaptureService.inst != null ? null : "Screen capture isn't on yet";
                 break;
             case 4:
                 text(col, "Which hive slot do you use? Slot 3 (straight ahead of the spawn) is the most tested. Pick it with − / +, then Confirm.");
-                TextView hs = a.tv("", 18, MainActivity.TXT); hs.setTypeface(Typeface.DEFAULT_BOLD); hs.setGravity(Gravity.CENTER); col.addView(hs);
+                TextView hs = a.tv("", 18, a.TXT); hs.setTypeface(Typeface.DEFAULT_BOLD); hs.setGravity(Gravity.CENTER); col.addView(hs);
                 Runnable show = () -> hs.setText("Slot " + p.hiveSlot + (p.hiveConfirmed ? "  ✔ confirmed" : ""));
                 show.run();
                 LinearLayout r = a.row();
                 r.addView(a.button("−", 0, v -> { p.hiveSlot = Math.max(1, p.hiveSlot - 1); p.hiveConfirmed = false; App.save(a); show.run(); }), new LinearLayout.LayoutParams(0, a.dp(52), 1));
                 r.addView(a.button("+", 0, v -> { p.hiveSlot = Math.min(6, p.hiveSlot + 1); p.hiveConfirmed = false; App.save(a); show.run(); }), new LinearLayout.LayoutParams(0, a.dp(52), 1));
-                r.addView(a.button("Confirm", MainActivity.PURPLE, v -> { p.hiveConfirmed = true; App.save(a); Log.add("hive: slot " + p.hiveSlot + " confirmed in setup"); show.run(); }), new LinearLayout.LayoutParams(0, a.dp(52), 2));
+                r.addView(a.button("Confirm", a.PURPLE, v -> { p.hiveConfirmed = true; App.save(a); Log.add("hive: slot " + p.hiveSlot + " confirmed in setup"); show.run(); }), new LinearLayout.LayoutParams(0, a.dp(52), 2));
                 col.addView(r);
                 col.addView(a.toggle("If this hive is taken, use the nearest free one (3 first)", p.autoHiveSlot, on -> p.autoHiveSlot = on));
                 check = () -> p.hiveConfirmed ? null : "Confirm your hive slot";
@@ -149,7 +149,7 @@ final class SetupWizard {
                 text(col, "Type your movement speed from Bee Swarm: the stats menu (your bee icon → Stats) shows \"Movement Speed\". Use the number without Haste. The macro walks by distance, so a wrong number ends short or long (wrong field).");
                 android.widget.EditText ms = new android.widget.EditText(a);
                 ms.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
-                ms.setTextColor(MainActivity.TXT); ms.setTextSize(20); ms.setHint("e.g. 29.9");
+                ms.setTextColor(a.TXT); ms.setTextSize(20); ms.setHint("e.g. 29.9");
                 if (p.moveSpeedTyped) ms.setText(String.format(java.util.Locale.US, "%.2f", p.moveSpeed));
                 ms.addTextChangedListener(new android.text.TextWatcher() {
                     public void beforeTextChanged(CharSequence c, int x, int y, int z) { }

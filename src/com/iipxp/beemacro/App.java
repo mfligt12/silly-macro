@@ -8,6 +8,7 @@ final class App {
     static synchronized Profile profile(Context c) {
         if (profile == null) {
             profile = Profile.load(c.getFilesDir()); Log.add("profile: loaded " + Profile.NAME);
+            Ui.apply(profile);
             if (profile.device.isEmpty()) {
                 android.util.DisplayMetrics m = c.getResources().getDisplayMetrics();
                 boolean tab = Remap.tablet(Math.max(m.widthPixels, m.heightPixels), Math.min(m.widthPixels, m.heightPixels));

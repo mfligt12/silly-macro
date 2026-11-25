@@ -79,21 +79,87 @@ public final class Detector {
         }
     }
 
-    // ------------------------------------------------------------------ ground model (Pine Tree Forest)
-    static boolean ground(int p) {
+    // ------------------------------------------------------------------ ground model (blue fields; red fields for red hives)
+    public static boolean ground(int p) { return ground(p, false); }
+    /** red = a red field (Rose, Strawberry, Pepper, Mushroom): red petals and their yellow centres are ground too.
+     *  A red token on red petals is then missed by this stage: red-hive tokens (Inferno, Red Boost, marks…) carry
+     *  white/dark rims and icon colours that are not petal colours, which is what still separates them. */
+    public static boolean ground(int p, boolean red) {
         int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
         int mx = Math.max(r, Math.max(g, b)), mn = Math.min(r, Math.min(g, b));
         if (g >= r + 12 && g >= b - 10 && mx - mn > 25) return true;                 // grass (incl. shade)
         if (b >= r + 35 && b >= g + 15) return true;                                  // blue flower petals
         if (mn > 175 && mx - mn < 40) return true;                                    // white petals
+        if (red) {
+            // red petals, bright or harvested: FieldMap's tested rule. |G-B| small keeps orange/yellow flames (Inferno,
+            // Flame Fuel) out of the ground
+            if (r >= 95 && r >= 2 * g && r >= 2 * b && Math.abs(g - b) < 18) return true;
+            // measured on a real red field (field_other.png): what stays after the petal rule is the flower centres
+            // (~224,192,64-96) and petal edges blending into grass (~128-192,64-96,32-64). Bright orange (r > 210:
+            // Inferno / Flame Fuel flames) is never ground.
+            if (r > 200 && g > 170 && b < 110 && r - g < 60) return true;                               // yellow centres
+            if (r >= 100 && r <= 210 && r - g >= 30 && r - g <= 110 && g - b >= 5 && g - b <= 50 && b < 90) return true;   // petal edges
+        }
         return false;
+    }
+
+    /** Red-field ground model for this frame? Red hive only, never on blue flowers. The flower check alone misses
+     *  mixed red/white fields: live on Rose (S23, 2026-11-24) half the frames read UNKNOWN. So while the run is
+     *  farming a red field, it counts too. */
+    public static boolean redGround(boolean redHive, String field, Vision.Field seen, boolean farming) {
+        if (!redHive || seen == Vision.Field.PINE_TREE) return false;
+        return seen == Vision.Field.OTHER_FIELD || (farming && !Routes.blueField(field));
+    }
+
+    // ------------------------------------------------------------------ what to collect (blue + red hive)
+    /** Red hive groups, names as in the catalog. Marks: the token and the mark it leaves on the ground. */
+    public static final String[] FLAME = {"Inferno", "Flame Fuel"},
+            MARKS = {"Pollen Mark", "Honey Mark", "Mark Surge", "Target Practice", "Precise Mark"},
+            RED_BOOST = {"Red Boost", "Rage", "Red Bomb Sync", "Red Pulse"};
+    static boolean in(String[] g, String n) { for (String s : g) if (s.equals(n)) return true; return false; }
+    /** Collection priority (0 = never). Red hive: the named red groups first, then the category values; blue: categories. */
+    public static int priority(Profile p, Cat c, String name) { return priority(p, c, name, null); }
+    /** buffs = names active in the buff row (null = unknown). Buff-aware: Target Practice is worth more while the
+     *  Precision buff is off (it's what gives Precision back). */
+    public static int priority(Profile p, Cat c, String name, java.util.Set<String> buffs) {
+        if (p.redHive() && name != null) {
+            if (name.equals("Target Practice") && buffs != null && !buffs.contains("Precision")) return Math.min(5, p.prioMarks + 2);
+            if (in(FLAME, name)) return p.prioFlame;
+            if (in(MARKS, name)) return p.prioMarks;
+            if (in(RED_BOOST, name)) return p.prioRedBoost;
+            if (name.startsWith("Blue ")) return 0;                                   // blue-only tokens do nothing for a red hive
+        }
+        switch (c) { case BOOST: return p.prioBoost; case TOKEN: return p.prioToken; case LOOT: return p.prioLoot; case MARK: return p.prioMark; default: return 0; }
+    }
+
+    /** What was really collected this run, per token name: the adaptive part of target choice. A token that keeps
+     *  despawning, floating out of reach or vanishing elsewhere loses weight; one that is reliably picked up keeps it.
+     *  weight = (collected + 1) / (tries + 1): 1 untried, 0.5 after one miss, 0.25 after three. */
+    public static final class Outcomes {
+        private final java.util.Map<String, int[]> m = new java.util.HashMap<>();
+        public synchronized void add(String name, boolean got) { int[] v = m.computeIfAbsent(name, k -> new int[2]); v[0]++; if (got) v[1]++; }
+        public synchronized double weight(String name) { int[] v = m.get(name); return v == null ? 1 : (v[1] + 1.0) / (v[0] + 1.0); }
+        public synchronized void clear() { m.clear(); }
+    }
+    /** Target score: priority x success weight x walk-distance curve x cluster bonus.
+     *  - walk curve 1 / (1 + (d / (range/2))^2): a near token of slightly lower priority can beat a far one;
+     *  - cluster: +15% per other candidate within reach of it (up to 3), walking there picks up several;
+     *  - top priority (5) that isn't being missed (weight >= 0.5) is its own tier, always ahead of the rest. */
+    public static double score(int prio, double weight, double distPx, double rangePx, int neighbours) {
+        double reach = 1 / (1 + Math.pow(distPx / Math.max(1, rangePx * 0.5), 2));
+        double sc = prio * weight * reach * (1 + 0.15 * Math.min(3, neighbours));
+        return prio >= 5 && weight >= 0.5 ? 100 + sc : sc;
     }
 
     // HUD zones that never hold world objects (fractions of a 2340x1080 landscape frame)
     static final double[][] HUD = {
             {0, 0, 1, 0.27},                 // top bar: menu, Honey/Pollen, buff row, prompt
-            {0, 0.27, 0.31, 1},              // left: menu icons, shift lock, D-pad
-            {0.29, 0.76, 0.72, 1},           // ability row + hotbar
+            // left side: only where the controls are (the whole left third was skipped for the touch D-pad; with the
+            // keyboard emulator there is none, and real tokens lying there were missed, Rose 2026-11-24)
+            {0, 0.25, 0.32, 0.37},           // menu icons row
+            {0, 0.55, 0.10, 0.75},           // shift lock button
+            {0, 0.68, 0.20, 1},              // thumbstick
+            {0.29, 0.70, 0.72, 1},           // ability row + hotbar (new HUD: the ability buttons start at y 0.72)
             {0.80, 0.70, 1, 1},              // jump button
             {0.88, 0.17, 1, 0.27},           // help "?"
             {0.84, 0.27, 1, 0.40},           // field "Bloom" counter
@@ -105,7 +171,9 @@ public final class Detector {
     /** Stage 1-3 for one frame. `ignore` = screen rects of our own panel/boxes/labels (captured too). */
     public static List<Det> detect(int[] px, int w, int h, Catalog catalog, Library lib, double minConf, List<int[]> ignore) { return detect(px, w, h, catalog, lib, minConf, ignore, true); }
     /** classify=false: stage 1 only (cheap); the caller classifies per tracked object (see Monitor). */
-    public static List<Det> detect(int[] px, int w, int h, Catalog catalog, Library lib, double minConf, List<int[]> ignore, boolean classify) {
+    public static List<Det> detect(int[] px, int w, int h, Catalog catalog, Library lib, double minConf, List<int[]> ignore, boolean classify) { return detect(px, w, h, catalog, lib, minConf, ignore, classify, false); }
+    /** red = red field ground model (red hive farming Rose / Strawberry / Pepper / Mushroom). */
+    public static List<Det> detect(int[] px, int w, int h, Catalog catalog, Library lib, double minConf, List<int[]> ignore, boolean classify, boolean red) {
         List<Det> out = new ArrayList<>();
         if (w < h) return out;
         int S = Math.max(2, w / 585), gw = w / S, gh = h / S;
@@ -113,7 +181,7 @@ public final class Detector {
         for (int gy = 0; gy < gh; gy++) for (int gx = 0; gx < gw; gx++) {
             int x = gx * S, y = gy * S;
             if (inHud(x, y, w, h) || inAny(ignore, x, y)) continue;
-            fg[gy * gw + gx] = !ground(px[y * w + x]);
+            fg[gy * gw + gx] = !ground(px[y * w + x], red);
         }
         int[] lab = new int[gw * gh], stack = new int[gw * gh];
         int next = 0;
@@ -149,12 +217,20 @@ public final class Detector {
         double side = Math.max(d.x1 - d.x0, d.y1 - d.y0) * 1.1, cx = (d.x0 + d.x1) / 2.0, cy = (d.y0 + d.y1) / 2.0;
         d.tpl = Catalog.sample(px, w, h, cx - side / 2, cy - side / 2, side, side);
         if (catalog == null) return;
-        Catalog.Match m = catalog.match(px, w, h, cx - side / 2, cy - side / 2, side, side, false,
-                e -> e.kind.equals("TOKEN") || e.kind.equals("LOOT") || e.kind.equals("LANDMARK") || e.kind.equals("IGNORE"), mine);
+        java.util.function.Predicate<Catalog.Entry> want = e -> e.kind.equals("TOKEN") || e.kind.equals("LOOT") || e.kind.equals("LANDMARK") || e.kind.equals("IGNORE");
+        Catalog.Match m = catalog.match(px, w, h, cx - side / 2, cy - side / 2, side, side, false, want, mine);
+        // A token lying on the ground under the steep farming camera is a wide, short ellipse: its own box, stretched
+        // back to a square, matches the round icon far better (live Rose frame: flame token 0.45 → 0.64)
+        double bw = (d.x1 - d.x0) * 1.1, bh = (d.y1 - d.y0) * 1.1;
+        if (bw > bh * 1.25) {
+            Catalog.Match f = catalog.match(px, w, h, cx - bw / 2, cy - bh / 2, bw, bh, false, want, mine);
+            if (f.best != null && (m.best == null || f.score > m.score)) m = f;
+        }
         if (m.best == null) return;
         d.guess = m.best.name; d.guessScore = m.score;
         // Wiki images alone were measured to produce false names on flower centres/bubbles up to 0.91, so a wiki-only
-        // match needs ≥ wikiMinConf; your verified in-game crops use the normal threshold.
+        // match needs ≥ wikiMinConf; your verified in-game crops use the normal threshold. (A looser "wide margin" rule
+        // for flat tokens was tried on 95 real frames: it named Fetch on blue fields at up to 0.85 - not kept.)
         double need = "verified".equals(m.best.status) ? minConf : Math.max(minConf, wikiMinConf);
         if (m.score >= need && m.score - m.second >= minMargin) {
             if (m.best.kind.equals("IGNORE")) { d.cat = Cat.IGNORE; return; }
@@ -178,7 +254,7 @@ public final class Detector {
         return keep;
     }
 
-    static boolean inHud(int x, int y, int w, int h) {
+    public static boolean inHud(int x, int y, int w, int h) {
         double fx = x / (double) w, fy = y / (double) h;
         for (double[] z : HUD) if (fx >= z[0] && fx < z[2] && fy >= z[1] && fy < z[3]) return true;
         return false;

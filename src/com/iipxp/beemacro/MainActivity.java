@@ -44,7 +44,8 @@ import java.util.regex.Pattern;
  *  Hive, Statistics, Performance, Settings). Every setting is the same one as before, just grouped by tab. All views
  *  are built in code; the macro itself runs in its services, so switching tabs never touches it. */
 public class MainActivity extends Activity {
-    static final int BG = Ui.BG0, CARD = Ui.GLASS, PURPLE = Ui.PURPLE, BLUE = Ui.CYAN, TXT = Ui.TXT, DIM = Ui.DIM;
+    /** The theme's palette when this screen was built (a theme switch rebuilds the screen). PURPLE = primary button, BLUE = secondary. */
+    final int BG = Ui.BG0, CARD = Ui.GLASS, PURPLE = Ui.PURPLE, BLUE = Ui.CYAN, TXT = Ui.TXT, DIM = Ui.DIM;
     final Handler h = new Handler(Looper.getMainLooper());
     Profile p;
     TextView checks, hiveText, history, log, labelsText, buffText, catText;
@@ -57,7 +58,8 @@ public class MainActivity extends Activity {
             {"home", "🏠", "Home", "Dashboard"},
             {"tokens", "🪙", "Tokens", "Token recognition & collection"}, {"buffs", "✨", "Buffs", "Buff tracker"},
             {"seq", "🧩", "Sequences", "Field, pattern & sprinkler"}, {"nav", "🧭", "Navigation", "Guard, edges, drift & camera"},
-            {"hive", "🍯", "Hive", "Hive, conversion & balloon"}, {"stats", "📊", "Statistics", "Honey & sessions"},
+            {"hive", "🍯", "Hive", "Hive, conversion & balloon"}, {"redhive", "🔴", "Red Hive", "Red hive tokens, priorities & recognition"},
+            {"music", "🎵", "Music", "Background music & playlists"}, {"stats", "📊", "Statistics", "Honey & sessions"},
             {"perf", "⚡", "Performance", "Vision speed, heat & battery"}, {"settings", "⚙", "Settings", "Overlay, overnight & key sender"}};
     /** Simple by default: the tabs most players never need stay hidden until Settings → Show advanced tabs. */
     static final java.util.Set<String> ADVANCED = new java.util.HashSet<>(java.util.Arrays.asList("tokens", "buffs", "seq", "nav", "perf"));
@@ -90,7 +92,7 @@ public class MainActivity extends Activity {
         return Report.log("Silly Macro " + Account.version(c) + "\n" + deviceSummary(c) + "\nHUD: " + Monitor.calState + "\n\n" + Log.dump(Report.LOG_LINES));
     }
     TextView heroSub, heroState, tPhase, tTimer, tBag, tHive, tLoops, tRate, tField, tPattern, aiText, startLabel;
-    Ui.Bar bagBar; Ui.Pulse livePulse, railPulse; LinearLayout buffChips; View startGlow;
+    Ui.Bar bagBar; Ui.Pulse livePulse, railPulse; LinearLayout buffChips;
     // ---- statistics + performance
     Ui.Chart honeyChart, rateChart, fpsChart, tempChart; TextView sTotal, sTime, sBest, sCount, pFps, pFrame, pTemp, pBatt, pRam;
     final double[] fpsHist = new double[60], tempHist = new double[60]; int perfN;
@@ -122,6 +124,7 @@ public class MainActivity extends Activity {
         // once only: asked on every open, the prompt landed on top of the game while Start was checking the screen and both Starts were refused ("Roblox menu is open" / "Turn the device sideways"; S23 live 2026-11-24)
         if (checkSelfPermission("android.permission.POST_NOTIFICATIONS") != 0 && !p.notifAsked) { p.notifAsked = true; App.save(this); requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1); }
         getWindow().setStatusBarColor(Ui.BG1); getWindow().setNavigationBarColor(BG);
+        if (Ui.light) getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         wide = getResources().getConfiguration().screenWidthDp >= 640;
         if (Account.configured(this) && !Account.signedIn(this)) { buildLogin(); return; }
         if (Account.configured(this)) new Thread(() -> {   // re-check on every open: a disabled account goes back to the login page
@@ -147,9 +150,11 @@ public class MainActivity extends Activity {
         setContentView(frame);
 
         buildHome(); buildTokens(); buildBuffs(); buildSequences(); buildNavigation();
-        buildHive(); buildStats(); buildPerf(); buildSettings();
+        buildHive(); buildRedHive(); buildMusic(); buildStats(); buildPerf(); buildSettings();
         for (View pg : pages.values()) pg.setVisibility(View.GONE);
-        show("home", false);
+        frame.addView(buildMiniPlayer(), miniLp());
+        String back = b == null ? "home" : b.getString("tab", "home");
+        show(pages.containsKey(back) ? back : "home", false);
 
         if (b == null) addContentView(new SplashView(this, null), new ViewGroup.LayoutParams(-1, -1));   // every launch (not on rotation)
         if (!p.shizukuOffered && !shizukuInstalled()) {
@@ -170,10 +175,10 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ shell
     View buildRail() {
         LinearLayout r = new LinearLayout(this); r.setOrientation(LinearLayout.VERTICAL); r.setGravity(Gravity.CENTER_HORIZONTAL);
-        GradientDrawable bg = new GradientDrawable(); bg.setColor(0x99090614); r.setBackground(bg);
+        GradientDrawable bg = new GradientDrawable(); bg.setColor(Ui.RAIL); r.setBackground(bg);
         r.setPadding(0, dp(10), 0, dp(10));
         TextView menu = railButton("☰"); menu.setOnClickListener(v -> drawer(true)); r.addView(menu, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        View sep = new View(this); sep.setBackgroundColor(0x22FFFFFF); LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(dp(28), dp(1)); sl.setMargins(0, dp(6), 0, dp(6)); r.addView(sep, sl);
+        View sep = new View(this); sep.setBackgroundColor(Ui.STROKE); LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(dp(28), dp(1)); sl.setMargins(0, dp(6), 0, dp(6)); r.addView(sep, sl);
         ScrollView sv = new ScrollView(this); sv.setVerticalScrollBarEnabled(false);
         LinearLayout items = new LinearLayout(this); items.setOrientation(LinearLayout.VERTICAL); items.setGravity(Gravity.CENTER_HORIZONTAL);
         for (String[] t : TABS) {
@@ -189,20 +194,20 @@ public class MainActivity extends Activity {
         return r;
     }
     TextView railButton(String glyph) {
-        TextView t = new TextView(this); t.setText(glyph); t.setTextSize(20); t.setGravity(Gravity.CENTER); t.setTextColor(TXT);
+        TextView t = new TextView(this); t.setText(glyph); t.setTextSize(19); t.setGravity(Gravity.CENTER); t.setTextColor(TXT);
         return t;
     }
 
     View buildDrawer() {
         drawer = new LinearLayout(this); drawer.setOrientation(LinearLayout.VERTICAL);
         drawer.setPadding(dp(16), dp(20), dp(16), dp(16));
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xF2160C2E, 0xF208060F});
+        GradientDrawable bg = new GradientDrawable(); bg.setColor(Ui.BG1);
         bg.setStroke(dp(1), Ui.STROKE); drawer.setBackground(bg);
         ImageView logo = new ImageView(this); logo.setImageResource(R.drawable.ic_launcher);
         drawer.addView(logo, new LinearLayout.LayoutParams(dp(72), dp(72)));
         TextView name = tv("Silly Macro", 22, TXT); name.setTypeface(Typeface.DEFAULT_BOLD); name.setPadding(0, dp(8), 0, 0); drawer.addView(name);
         drawer.addView(tv("Bee Swarm farming assistant", 12, DIM));
-        View sep = new View(this); sep.setBackgroundColor(0x22FFFFFF); LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, dp(1)); sl.setMargins(0, dp(14), 0, dp(8)); drawer.addView(sep, sl);
+        View sep = new View(this); sep.setBackgroundColor(Ui.STROKE); LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, dp(1)); sl.setMargins(0, dp(14), 0, dp(8)); drawer.addView(sep, sl);
         ScrollView sv = new ScrollView(this);
         LinearLayout items = new LinearLayout(this); items.setOrientation(LinearLayout.VERTICAL);
         for (String[] t : TABS) {
@@ -239,9 +244,9 @@ public class MainActivity extends Activity {
         View next = pages.get(key); if (next == null) return;
         for (Map.Entry<String, TextView> e : railItems.entrySet()) {
             boolean on = e.getKey().equals(key);
-            e.getValue().setBackground(on ? Ui.pill(this, Ui.alpha(PURPLE, 0.55f), Ui.alpha(Ui.CYAN, 0.35f), 14) : null);
+            e.getValue().setBackground(on ? Ui.solid(this, Ui.alpha(PURPLE, Ui.light ? 0.14f : 0.20f), 16) : null);
             TextView d = drawerItems.get(e.getKey());
-            d.setBackground(on ? Ui.pill(this, Ui.alpha(PURPLE, 0.45f), Ui.alpha(Ui.CYAN, 0.15f), 12) : null);
+            d.setBackground(on ? Ui.solid(this, Ui.alpha(PURPLE, Ui.light ? 0.12f : 0.16f), 14) : null);
             d.setTypeface(on ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
         }
         if (next == current) return;
@@ -253,6 +258,7 @@ public class MainActivity extends Activity {
             if (prev != null) prev.animate().alpha(0).setDuration(120).setInterpolator(Ui.EASE_OUT).withEndAction(() -> { if (prev != current) prev.setVisibility(View.GONE); prev.setAlpha(1); }).start();
         } else { next.setAlpha(1); next.setTranslationY(0); if (prev != null) prev.setVisibility(View.GONE); }
         if (key.equals("tokens")) { drawReview(); }
+        if (key.equals("music")) drawMusic();
         refresh();
     }
 
@@ -260,10 +266,10 @@ public class MainActivity extends Activity {
     LinearLayout page(String key) {
         ScrollView sv = new ScrollView(this); sv.setFillViewport(true);
         LinearLayout col = new LinearLayout(this); col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(14), dp(14), dp(14), dp(40));
+        col.setPadding(dp(14), dp(14), dp(14), dp(96));
         sv.addView(col);
         String[] t = null; for (String[] x : TABS) if (x[0].equals(key)) t = x;
-        TextView title = tv(t[2], 24, TXT); title.setTypeface(Typeface.DEFAULT_BOLD); col.addView(title);
+        TextView title = tv(t[2], 28, TXT); title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL)); title.setLetterSpacing(-0.02f); col.addView(title);
         col.addView(tv(t[3], 13, DIM));
         content.addView(sv, new FrameLayout.LayoutParams(-1, -1));
         pages.put(key, sv);
@@ -280,7 +286,7 @@ public class MainActivity extends Activity {
         ImageView logo = new ImageView(this); logo.setImageResource(R.drawable.ic_launcher); hero.addView(logo, new LinearLayout.LayoutParams(dp(58), dp(58)));
         LinearLayout ht = new LinearLayout(this); ht.setOrientation(LinearLayout.VERTICAL); ht.setPadding(dp(12), 0, 0, 0);
         TextView hn = tv("Silly Macro", 20, TXT); hn.setTypeface(Typeface.DEFAULT_BOLD); ht.addView(hn);
-        heroSub = tv("", 13, 0xFFC9B8FF); ht.addView(heroSub);
+        heroSub = tv("", 13, DIM); ht.addView(heroSub);
         hero.addView(ht, new LinearLayout.LayoutParams(0, -2, 1));
         LinearLayout st = row(); livePulse = new Ui.Pulse(this); st.addView(livePulse, new LinearLayout.LayoutParams(dp(18), dp(18)));
         heroState = tv("Idle", 12, TXT); heroState.setPadding(dp(4), 0, 0, 0); st.addView(heroState);
@@ -290,19 +296,11 @@ public class MainActivity extends Activity {
         // start + controls
         LinearLayout ctl = card("Control");
         FrameLayout sf = new FrameLayout(this);
-        startGlow = new View(this); startGlow.setBackground(Ui.pill(this, Ui.alpha(PURPLE, 0.55f), Ui.alpha(Ui.CYAN, 0.55f), 30));
-        FrameLayout.LayoutParams gl = new FrameLayout.LayoutParams(-1, dp(64)); gl.setMargins(dp(6), dp(6), dp(6), dp(6)); sf.addView(startGlow, gl);
-        startLabel = tv("▶  Start", 20, Color.WHITE); startLabel.setTypeface(Typeface.DEFAULT_BOLD); startLabel.setGravity(Gravity.CENTER);
-        startLabel.setBackground(Ui.pill(this, PURPLE, 0xFF5B8CFF, 28));
+        startLabel = tv("▶  Start", 19, Ui.ON_PRIMARY); startLabel.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL)); startLabel.setGravity(Gravity.CENTER);
+        startLabel.setBackground(Ui.solid(this, Ui.PRIMARY, 32));
         startLabel.setOnClickListener(v -> { press(v); startMacro(); });
         FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(-1, dp(64)); sl.setMargins(dp(6), dp(6), dp(6), dp(6)); sf.addView(startLabel, sl);
         ctl.addView(sf, new LinearLayout.LayoutParams(-1, dp(76)));
-        if (Ui.motion()) {   // the glow behind Start breathes; GPU-friendly (opacity + scale only)
-            ValueAnimator g = ValueAnimator.ofFloat(0, 1); g.setDuration(2200); g.setRepeatCount(ValueAnimator.INFINITE); g.setRepeatMode(ValueAnimator.REVERSE);
-            g.setInterpolator(Ui.EASE_IN_OUT);
-            g.addUpdateListener(a -> { float t = (float) a.getAnimatedValue(); startGlow.setAlpha(0.25f + 0.45f * t); startGlow.setScaleX(1 + 0.02f * t); startGlow.setScaleY(1 + 0.12f * t); });
-            g.start();
-        } else startGlow.setAlpha(0.35f);
         LinearLayout cr = row();
         cr.addView(button("Pause", 0, v -> { Engine e = Engine.inst; if (e != null && !e.finished() && !e.paused) e.pause("paused by you"); }), new LinearLayout.LayoutParams(0, dp(48), 1));
         cr.addView(button("Resume", 0, v -> { Engine e = Engine.inst; if (e != null && e.paused) e.resume(); }), new LinearLayout.LayoutParams(0, dp(48), 1));
@@ -358,8 +356,7 @@ public class MainActivity extends Activity {
         c.addView(tv("6 · In the game, hold your phone sideways and press ▶ Start on the floating panel. The app reads your screen by itself.", 12, DIM));
     }
     GradientDrawable heroBg() {
-        GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xCC2A1660, 0xB3121C3F});
-        d.setCornerRadius(dp(20)); d.setStroke(dp(1), 0x668B5CF6); return d;
+        return Ui.glass(this, 24, true);
     }
     TextView kv(LinearLayout parent, String key) {
         LinearLayout r = row(); r.setPadding(0, dp(3), 0, dp(3));
@@ -442,7 +439,8 @@ public class MainActivity extends Activity {
     void buildTokens() {
         page("tokens");
         LinearLayout ct = card("Token collection");
-        ct.addView(toggle("Collect labelled tokens while farming", p.collectTokens, on -> p.collectTokens = on));
+        if (Profile.AI_GATHERING) ct.addView(toggle("Collect labelled tokens while farming", p.collectTokens, on -> p.collectTokens = on));
+        else ct.addView(tv("Token collection is switched off in this version (AI token gathering comes in a later update). Recognition and review still work.", 12, DIM));
         ct.addView(stepper("Priority: boost tokens", () -> "" + p.prioBoost, d -> p.prioBoost = clamp(p.prioBoost + d, 0, 5)));
         ct.addView(stepper("Priority: tokens", () -> "" + p.prioToken, d -> p.prioToken = clamp(p.prioToken + d, 0, 5)));
         ct.addView(stepper("Priority: loot", () -> "" + p.prioLoot, d -> p.prioLoot = clamp(p.prioLoot + d, 0, 5)));
@@ -746,6 +744,7 @@ public class MainActivity extends Activity {
 
     void buildSettings() {
         page("settings");
+        buildAppearance();
         LinearLayout o = card("Floating overlay");
         overlaySwitch = (Switch) toggle("Show floating overlay", p.overlayVisible, on -> { p.overlayVisible = on; if (MacroService.inst != null) MacroService.inst.showOverlay(on); });
         o.addView(overlaySwitch);
@@ -928,10 +927,15 @@ public class MainActivity extends Activity {
 
     final Runnable tick = new Runnable() { @Override public void run() { refresh(); h.postDelayed(this, 1000); } };
 
-    @Override protected void onDestroy() { h.removeCallbacks(tick); super.onDestroy(); }
+    // Music only plays outside the app during a run (if allowed): leaving the app pauses it otherwise
+    @Override protected void onStart() { super.onStart(); Music.appVisible = true; }
+    @Override protected void onStop() { super.onStop(); if (!isChangingConfigurations()) Music.appHidden(this); }
+    @Override protected void onSaveInstanceState(Bundle out) { super.onSaveInstanceState(out); out.putString("tab", currentKey); }
+    @Override protected void onDestroy() { h.removeCallbacks(tick); if (musicListener != null) Music.get(this).unlisten(musicListener); super.onDestroy(); }
     @Override protected void onResume() { super.onResume(); if (content == null) return; drawReview(); drawCatalog(""); }
 
     @Override protected void onActivityResult(int req, int code, Intent data) {
+        if (req == REQ_AUDIO) { if (code == RESULT_OK && data != null) importAudio(data); return; }
         if (req == 7 && code == RESULT_OK && data != null)
             startForegroundService(new Intent(this, CaptureService.class).putExtra("code", code).putExtra("data", data));
         else if (req == 7) toast("Screen capture was not allowed");
@@ -939,6 +943,7 @@ public class MainActivity extends Activity {
 
     private long emuAsked;
     void refresh() {
+        if (mTitle != null && currentKey.equals("music")) drawMusicState(); else updateMini();
         boolean input = MacroService.inst != null, cap = CaptureService.inst != null;
         Vision.Result v = Monitor.last;
         StringBuilder s = new StringBuilder();
@@ -1073,16 +1078,20 @@ public class MainActivity extends Activity {
         synchronized (Monitor.review) { items = new java.util.ArrayList<>(Monitor.review); }
         if (items.isEmpty()) { reviewRows.addView(tv("Nothing to review yet.", 12, DIM)); return; }
         for (Detector.Det d : items) {
-            LinearLayout rw = row();
+            // two lines (a 360 dp phone has no room for picture + text + 3 buttons in one): picture + guess, then buttons
+            LinearLayout top = row(); top.setPadding(0, dp(8), 0, dp(2));
             ImageView th = new ImageView(this);
-            th.setImageBitmap(Bitmap.createScaledBitmap(Bitmap.createBitmap(d.tpl, Catalog.N, Catalog.N, Bitmap.Config.ARGB_8888), dp(44), dp(44), false));
-            rw.addView(th, new LinearLayout.LayoutParams(dp(44), dp(44)));
-            rw.addView(tv(String.format(Locale.US, " guess: %s %.2f", d.guess == null ? "—" : d.guess, d.guessScore), 12, TXT), new LinearLayout.LayoutParams(0, -2, 1));
-            if (d.guess != null) { Button ok = button("✓", 0xFF2E7D32, v -> confirm(d, d.guess)); rw.addView(ok, new LinearLayout.LayoutParams(dp(44), dp(44))); }
-            Button nm = button("Name…", 0, v -> { nameDialog(d); synchronized (Monitor.review) { Monitor.review.remove(d); } }); nm.setTextSize(11);
-            rw.addView(nm, new LinearLayout.LayoutParams(dp(72), dp(44)));
-            Button no = button("✗", 0xFFB3261E, v -> { save(d, "Ignore", Detector.Cat.IGNORE); synchronized (Monitor.review) { Monitor.review.remove(d); } drawReview(); });
-            rw.addView(no, new LinearLayout.LayoutParams(dp(44), dp(44)));
+            th.setImageBitmap(Bitmap.createScaledBitmap(Bitmap.createBitmap(d.tpl, Catalog.N, Catalog.N, Bitmap.Config.ARGB_8888), dp(56), dp(56), false));
+            top.addView(th, new LinearLayout.LayoutParams(dp(56), dp(56)));
+            TextView g = tv(d.guess == null ? "No guess" : String.format(Locale.US, "Looks most like %s (%.2f)", d.guess, d.guessScore), 13, TXT); g.setPadding(dp(12), 0, 0, 0);
+            top.addView(g, new LinearLayout.LayoutParams(0, -2, 1));
+            reviewRows.addView(top);
+            LinearLayout rw = row();
+            if (d.guess != null) { Button ok = button("✓ It is", 0xFF2E7D32, v -> confirm(d, d.guess)); ok.setTextSize(12); rw.addView(ok, new LinearLayout.LayoutParams(0, dp(44), 1)); }
+            Button nm = button("Name…", 0, v -> { nameDialog(d); synchronized (Monitor.review) { Monitor.review.remove(d); } }); nm.setTextSize(12);
+            rw.addView(nm, new LinearLayout.LayoutParams(0, dp(44), 1));
+            Button no = button("✗ Not a token", 0xFFB3261E, v -> { save(d, "Ignore", Detector.Cat.IGNORE); synchronized (Monitor.review) { Monitor.review.remove(d); } drawReview(); }); no.setTextSize(12);
+            rw.addView(no, new LinearLayout.LayoutParams(0, dp(44), 1.3f));
             reviewRows.addView(rw);
         }
     }
@@ -1146,6 +1155,285 @@ public class MainActivity extends Activity {
 
     void line(StringBuilder s, boolean ok, String t) { s.append(ok ? "✅ " : "⚠️ ").append(t).append('\n'); }
 
+    // ------------------------------------------------------------------ Appearance (Settings)
+    void buildAppearance() {
+        LinearLayout a = card("Appearance");
+        a.addView(tv("Theme", 12, DIM));
+        LinearLayout th = row();
+        for (int i = 0; i < Ui.THEMES.length; i++) { String t = Ui.THEMES[i]; th.addView(chip(Ui.THEME_NAMES[i], p.theme.equals(t), v -> setTheme(t, p.accentColor, p.motionLevel))); }
+        HorizontalScrollView hs = new HorizontalScrollView(this); hs.setHorizontalScrollBarEnabled(false); hs.addView(th); a.addView(hs);
+        a.addView(tv("Accent colour (picks the Custom accent theme)", 12, DIM));
+        LinearLayout sw = row(); sw.setPadding(0, dp(6), 0, dp(6));
+        for (int c : Ui.ACCENTS) {
+            View dot = new View(this);
+            GradientDrawable d = new GradientDrawable(); d.setShape(GradientDrawable.OVAL); d.setColor(c);
+            if (p.theme.equals("custom") && p.accentColor == c) d.setStroke(dp(3), TXT); else d.setStroke(dp(1), Ui.STROKE);
+            dot.setBackground(d); dot.setContentDescription("Accent colour");
+            dot.setOnClickListener(v -> { press(v); setTheme("custom", c, p.motionLevel); });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(30), dp(30)); lp.setMargins(0, 0, dp(10), 0); sw.addView(dot, lp);
+        }
+        HorizontalScrollView hs2 = new HorizontalScrollView(this); hs2.setHorizontalScrollBarEnabled(false); hs2.addView(sw); a.addView(hs2);
+        a.addView(tv("Animations", 12, DIM));
+        LinearLayout an = row(); String[] mn = {"Off", "Reduced", "Full"};
+        for (int i = 2; i >= 0; i--) { int lvl = i; an.addView(chip(mn[i], p.motionLevel == i, v -> setTheme(p.theme, p.accentColor, lvl))); }
+        a.addView(an);
+        a.addView(tv("Reduced keeps page changes and button feedback but drops looping motion; Off is instant. Android's own "
+                + "\"Remove animations\" switch turns them off too. The floating panel over the game stays dark in every theme "
+                + "(readable over Bee Swarm) and takes your accent.", 11, DIM));
+    }
+    /** Pill chip: filled when selected, outlined otherwise. */
+    TextView chip(String s, boolean on, View.OnClickListener l) {
+        TextView t = tv(s, 13, on ? Ui.ON_PRIMARY : TXT); t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(14), dp(8), dp(14), dp(8));
+        GradientDrawable out = new GradientDrawable(); out.setCornerRadius(dp(18)); out.setStroke(dp(1), Ui.alpha(TXT, 0.22f));
+        t.setBackground(on ? Ui.solid(this, Ui.PRIMARY, 18) : out);
+        t.setOnClickListener(v -> { press(v); l.onClick(v); });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2); lp.setMargins(0, dp(4), dp(8), dp(8)); t.setLayoutParams(lp);
+        return t;
+    }
+    /** New theme / accent / animation level, live: the palette changes, the floating panel restyles, this screen is
+     *  rebuilt on the same tab (a quick fade; no app restart, the macro and music keep running). */
+    void setTheme(String t, int accent, int motion) {
+        if (t.equals("custom") && accent == 0) accent = Ui.ACCENTS[0];
+        p.theme = t; p.accentColor = accent; p.motionLevel = motion; App.save(this); Ui.apply(p);
+        Log.add("theme: " + t + (t.equals("custom") ? String.format(" #%06X", accent & 0xFFFFFF) : "") + ", animations " + motion);
+        if (MacroService.inst != null) MacroService.inst.restyle();
+        if (Ui.motion() && content != null) content.animate().alpha(0).setDuration(110).setInterpolator(Ui.EASE_OUT).withEndAction(this::recreate).start();
+        else recreate();
+    }
+
+    // ------------------------------------------------------------------ Red Hive
+    static final String[] RED_FIELDS = {"rose", "strawberry", "pepper", "mushroom"};
+    void buildRedHive() {
+        page("redhive");
+        LinearLayout h = card("Hive type");
+        h.addView(tv(p.redHive()
+                ? "Red hive is on: Silly Macro farms the red field below with Natro's pattern for it."
+                : "Blue hive (Pine Tree, Skillet) is on. Switch to Red hive to farm a red field (Rose, Strawberry, Pepper, Mushroom). Your blue settings stay saved.", 12, DIM));
+        LinearLayout hr = row();
+        hr.addView(chip("Blue hive", !p.redHive(), v -> { if (!p.redHive()) return; p.applyBlueHive(); App.save(this); Log.add("hive type: blue"); recreate(); }));
+        hr.addView(chip("Red hive", p.redHive(), v -> { if (p.redHive()) return; p.applyRedHive(); App.save(this); Log.add("hive type: red, field " + p.field + ", " + p.pattern); recreate(); }));
+        h.addView(hr);
+        LinearLayout m = card("Field");
+        m.addView(stepper("Field", () -> Routes.name(p.field) + (Routes.blueField(p.field) ? " (blue)" : ""), d -> {
+            int i = 0; for (int k = 0; k < RED_FIELDS.length; k++) if (RED_FIELDS[k].equals(p.field)) i = k;
+            p.field = RED_FIELDS[(i + d + RED_FIELDS.length) % RED_FIELDS.length]; p.fieldDefaults(); if (MacroService.inst != null) MacroService.inst.restyle();
+        }));
+        m.addView(tv("Changing the field also sets Natro's pattern for it (Sequences tab to change it).", 11, DIM));
+        if (!Profile.AI_GATHERING) {   // AI token gathering is held back for now (Profile.AI_GATHERING)
+            LinearLayout ai = card("AI token gathering");
+            ai.addView(tv("Coming in a later update. Token recognition isn't reliable enough on real red fields yet, so the macro farms "
+                    + "with your field's pattern and doesn't chase tokens.", 12, DIM));
+            return;
+        }
+        LinearLayout mv = card("Token walking");
+        mv.addView(toggle("Farm with the AI Tokens pattern (walks all over the field, grabs tokens as they pop up)", p.pattern.equals(Patterns.AI),
+                on -> { if (on) p.pattern = Patterns.AI; else p.fieldDefaults(); App.save(this); if (MacroService.inst != null) MacroService.inst.restyle(); }));   // panel shows the new pattern
+        mv.addView(stepper("Max token distance", () -> Math.round(p.collectRange * 100) + "% of screen", d -> p.collectRange = Math.max(0.1f, Math.min(0.6f, Math.round((p.collectRange + d * 0.05f) * 100) / 100f))));
+        mv.addView(stepper("Max walk per token", () -> p.maxCollectMs + " ms", d -> p.maxCollectMs = clamp(p.maxCollectMs + d * 250, 250, 4000)));
+        mv.addView(tv("Movement is the same key sender as every other step (Shizuku's virtual keyboard: no physical keyboard needed): short W/A/S/D "
+                + "presses re-aimed at the token on every frame, then the same presses reversed so the pattern carries on where it left off.", 11, DIM));
+        LinearLayout t = card("Ability tokens to go for");
+        t.addView(toggle("Collect tokens while farming", p.collectTokens, on -> p.collectTokens = on));
+        t.addView(stepper("🔥 Flame", () -> "" + p.prioFlame, d -> p.prioFlame = clamp(p.prioFlame + d, 0, 5)));
+        t.addView(tv("Inferno, Flame Fuel", 11, DIM));
+        t.addView(stepper("🎯 Marks", () -> "" + p.prioMarks, d -> p.prioMarks = clamp(p.prioMarks + d, 0, 5)));
+        t.addView(tv("Pollen, Honey and Precise marks, Mark Surge, Target Practice", 11, DIM));
+        t.addView(stepper("🔴 Red boosts", () -> "" + p.prioRedBoost, d -> p.prioRedBoost = clamp(p.prioRedBoost + d, 0, 5)));
+        t.addView(tv("Red Boost, Rage, Red Bomb Sync, Red Pulse", 11, DIM));
+        t.addView(stepper("Other tokens", () -> "" + p.prioToken, d -> p.prioToken = clamp(p.prioToken + d, 0, 5)));
+        t.addView(stepper("Loot", () -> "" + p.prioLoot, d -> p.prioLoot = clamp(p.prioLoot + d, 0, 5)));
+        t.addView(tv("0 = never. 5 = always first. Lower numbers are weighed against distance. Blue-only tokens are skipped with a red hive.", 11, DIM));
+        LinearLayout r = card("Recognition & performance");
+        r.addView(button("Review detected tokens (teach it what they are)", PURPLE, v -> show("tokens", true)));   // works with advanced tabs hidden
+        r.addView(toggle("Learn from results (adaptive priority)", p.adaptiveTokens, on -> p.adaptiveTokens = on));
+        r.addView(stepper("Name confidence needed", () -> String.format(java.util.Locale.US, "%.2f", p.boxMinConf), d -> p.boxMinConf = Math.max(0.6, Math.min(0.95, Math.round((p.boxMinConf + d * 0.05) * 100) / 100.0))));
+        r.addView(stepper("Detection rate (battery!)", () -> p.detectFps + " fps", d -> p.detectFps = clamp(p.detectFps + d, 1, 15)));
+        r.addView(toggle("Draw detection boxes over the game", p.showBoxes, on -> p.showBoxes = on));
+        r.addView(tv("What the AI really does, on the phone, no internet and no big model:\n"
+                + "• Detects: anything round and token-sized that isn't flower or grass (red fields: red petals and their yellow centres count as ground).\n"
+                + "• Recognises: compares each one with the token pictures (wiki) and the examples you confirmed (Tokens tab → Review). A name is only given when it clearly beats every other name.\n"
+                + "• Tracks: the same token across frames; it's only acted on once 3 of the last 4 frames agree.\n"
+                + "• Chooses: priority 5 goes first; below that a near token can beat a far one, and tokens in a group count for more. Target Practice counts extra while your Precision buff is off.\n"
+                + "• Adapts: counts which tokens it really picked up this run; tokens it keeps missing drop down the list.\n"
+                + "Red tokens on red petals are the hardest case: confirming a few examples in Review makes them reliable.", 11, DIM));
+    }
+
+    // ------------------------------------------------------------------ Music
+    static final int REQ_AUDIO = 41;   // 7 is screen capture (requestCapture): must stay different
+    TextView mTitle, mSub, mTime, mPlay, mRepeat, mShuffle, mMute; Ui.Bar mBar; LinearLayout mLists, mTracks; Runnable musicListener;
+    View mini, miniFull, miniChip; TextView miniTitle, miniPlay;
+    void buildMusic() {
+        page("music");
+        Music m = Music.get(this);
+        LinearLayout np = card("Now playing");
+        np.addView(toggle("Music on", p.musicOn, on -> m.setOn(on)));
+        mTitle = tv("", 20, TXT); mTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL)); mTitle.setPadding(0, dp(6), 0, 0); np.addView(mTitle);
+        mSub = tv("", 12, DIM); np.addView(mSub);
+        mBar = new Ui.Bar(this); LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-1, dp(5)); bl.setMargins(0, dp(10), 0, dp(4)); np.addView(mBar, bl);
+        mTime = tv("", 11, DIM); np.addView(mTime);
+        LinearLayout ctl = row(); ctl.setGravity(Gravity.CENTER);
+        ctl.addView(roundBtn("⏮︎", false, v -> m.prev()));
+        mPlay = roundBtn("▶︎", true, v -> m.toggle()); ctl.addView(mPlay);
+        ctl.addView(roundBtn("⏭︎", false, v -> m.next(true)));
+        np.addView(ctl);
+        LinearLayout vr = row();
+        mMute = roundBtn("🔊", false, v -> m.setMute(!p.musicMute)); vr.addView(mMute);
+        SeekBar vol = new SeekBar(this); vol.setMax(100); vol.setProgress(p.musicVolume);
+        vol.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(SeekBar s, int v, boolean u) { if (u) m.setVolume(v); }
+            public void onStartTrackingTouch(SeekBar s) { }
+            public void onStopTrackingTouch(SeekBar s) { App.save(MainActivity.this); }
+        });
+        vr.addView(vol, new LinearLayout.LayoutParams(0, -2, 1));
+        np.addView(vr);
+        LinearLayout mo = row();
+        mRepeat = chip("", false, v -> m.setRepeat(p.musicRepeat.equals("off") ? "all" : p.musicRepeat.equals("all") ? "one" : "off")); mo.addView(mRepeat);
+        mShuffle = chip("", false, v -> { p.musicShuffle = !p.musicShuffle; App.save(this); drawMusicState(); }); mo.addView(mShuffle);
+        np.addView(mo);
+        np.addView(toggle("Keep playing during macro runs", p.musicDuringRun, on -> p.musicDuringRun = on));
+        np.addView(tv("Off: music pauses when a run starts. On: it keeps playing over Bee Swarm. Calls and other apps' short sounds pause it either way.", 11, DIM));
+
+        LinearLayout pl = card("Playlists");
+        mLists = new LinearLayout(this); mLists.setOrientation(LinearLayout.VERTICAL); pl.addView(mLists);
+        pl.addView(button("New playlist", BLUE, v -> ask("New playlist", "", name -> { m.lists.create(name); m.saveLists(); drawMusic(); })));
+        LinearLayout tr = card("Tracks");
+        mTracks = new LinearLayout(this); mTracks.setOrientation(LinearLayout.VERTICAL); tr.addView(mTracks);
+        tr.addView(button("Import audio files…", PURPLE, v -> {
+            try { startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true), REQ_AUDIO); }
+            catch (Exception e) { toast("No file picker on this device"); }
+        }));
+        tr.addView(button("Add a built-in track…", 0, v -> new android.app.AlertDialog.Builder(this).setTitle("Built-in tracks").setItems(Playlists.BUILTIN, (dl, i) -> {
+            m.list().tracks.add(Playlists.builtin(i)); m.saveLists(); drawMusic(); }).show()));
+        tr.addView(tv("Built-in tracks are made by Silly Macro itself from simple maths (no recordings), so they're free to use. "
+                + "Imported files stay where they are on your phone; the playlist only remembers them. ★ = the track it starts with.", 11, DIM));
+        musicListener = () -> { drawMusicState(); if (currentKey.equals("music")) drawMusic(); };
+        m.listen(musicListener);
+    }
+    TextView roundBtn(String s, boolean primary, View.OnClickListener l) {
+        TextView t = tv(s, primary ? 20 : 16, primary ? Ui.ON_PRIMARY : TXT); t.setGravity(Gravity.CENTER);
+        t.setBackground(primary ? Ui.solid(this, Ui.PRIMARY, 28) : Ui.glass(this, 24, true));
+        t.setOnClickListener(v -> { press(v); l.onClick(v); });
+        int sz = dp(primary ? 56 : 46);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(sz, sz); lp.setMargins(dp(8), dp(8), dp(8), dp(8)); t.setLayoutParams(lp);
+        return t;
+    }
+    interface Got { void got(String s); }
+    void ask(String title, String start, Got g) {
+        android.widget.EditText e = new android.widget.EditText(this); e.setText(start); e.setSingleLine(true); e.setSelectAllOnFocus(true);
+        new android.app.AlertDialog.Builder(this).setTitle(title).setView(e).setPositiveButton("OK", (d, w) -> { String s = e.getText().toString().trim(); if (!s.isEmpty()) g.got(s); }).setNegativeButton("Cancel", null).show();
+    }
+    void drawMusicState() {
+        if (mTitle == null) return;
+        Music m = Music.get(this);
+        mTitle.setText(m.title());
+        mSub.setText(m.error.isEmpty() ? m.list().name + (p.musicOn ? m.playing() ? " · playing" : " · paused" : " · music off") : m.error);
+        mSub.setTextColor(m.error.isEmpty() ? DIM : Ui.GOLD);
+        int pos = m.position(), dur = m.duration();
+        mBar.set(dur > 0 ? pos / (float) dur : 0);
+        mTime.setText(dur > 0 ? Stats.fmt(pos) + " / " + Stats.fmt(dur) : "");
+        mPlay.setText(m.playing() ? "❚❚" : "▶︎");
+        mMute.setText(p.musicMute ? "🔇" : "🔊");
+        mRepeat.setText("Repeat: " + (p.musicRepeat.equals("one") ? "one" : p.musicRepeat.equals("all") ? "all" : "off"));
+        mShuffle.setText(p.musicShuffle ? "Shuffle: on" : "Shuffle: off");
+        updateMini();
+    }
+    void drawMusic() {
+        if (mLists == null) return;
+        Music m = Music.get(this);
+        mLists.removeAllViews();
+        for (int i = 0; i < m.lists.lists.size(); i++) {
+            int li = i; Playlists.Playlist l = m.lists.lists.get(i);
+            LinearLayout r = row(); r.setPadding(0, dp(2), 0, dp(2));
+            TextView n = tv((i == p.musicPlaylist ? "● " : "") + l.name + "  (" + l.tracks.size() + ")", 14, i == p.musicPlaylist ? TXT : DIM);
+            n.setOnClickListener(v -> { p.musicPlaylist = li; p.musicIndex = 0; App.save(this); drawMusic(); drawMusicState(); });
+            r.addView(n, new LinearLayout.LayoutParams(0, -2, 1));
+            r.addView(mini("▶", v -> { if (!l.tracks.isEmpty()) m.playAt(li, 0); }));
+            r.addView(mini("✎", v -> ask("Rename playlist", l.name, s -> { m.lists.rename(li, s); m.saveLists(); })));
+            r.addView(mini("↑", v -> { if (Playlists.move(m.lists.lists, li, li - 1)) { if (p.musicPlaylist == li) p.musicPlaylist--; else if (p.musicPlaylist == li - 1) p.musicPlaylist++; m.saveLists(); } }));
+            r.addView(mini("↓", v -> { if (Playlists.move(m.lists.lists, li, li + 1)) { if (p.musicPlaylist == li) p.musicPlaylist++; else if (p.musicPlaylist == li + 1) p.musicPlaylist--; m.saveLists(); } }));
+            r.addView(mini("✕", v -> new android.app.AlertDialog.Builder(this).setTitle("Remove \"" + l.name + "\"?").setMessage("The playlist goes; your audio files stay on the phone.")
+                    .setPositiveButton("Remove", (d, w) -> { if (!m.lists.remove(li)) { toast("Keep at least one playlist"); return; } if (p.musicPlaylist >= li && p.musicPlaylist > 0) p.musicPlaylist--; App.save(this); m.saveLists(); })
+                    .setNegativeButton("Cancel", null).show()));
+            mLists.addView(r);
+        }
+        mTracks.removeAllViews();
+        Playlists.Playlist l = m.list();
+        if (l.tracks.isEmpty()) mTracks.addView(tv("No tracks in \"" + l.name + "\" yet.", 12, DIM));
+        for (int i = 0; i < l.tracks.size(); i++) {
+            int ti = i; Playlists.Track t = l.tracks.get(i);
+            boolean cur = i == p.musicIndex;
+            LinearLayout r = row(); r.setPadding(0, dp(2), 0, dp(2));
+            TextView n = tv((t.uri.equals(p.musicDefault) ? "★ " : "") + t.title, 14, cur ? Ui.CYAN : TXT); n.setSingleLine(true); n.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            n.setOnClickListener(v -> m.playAt(p.musicPlaylist, ti));
+            r.addView(n, new LinearLayout.LayoutParams(0, -2, 1));
+            r.addView(mini("★", v -> { p.musicDefault = t.uri; App.save(this); drawMusic(); toast("\"" + t.title + "\" plays first from now on"); }));
+            r.addView(mini("↑", v -> { if (Playlists.move(l.tracks, ti, ti - 1)) { if (p.musicIndex == ti) p.musicIndex--; else if (p.musicIndex == ti - 1) p.musicIndex++; m.saveLists(); } }));
+            r.addView(mini("↓", v -> { if (Playlists.move(l.tracks, ti, ti + 1)) { if (p.musicIndex == ti) p.musicIndex++; else if (p.musicIndex == ti + 1) p.musicIndex--; m.saveLists(); } }));
+            r.addView(mini("✕", v -> { l.tracks.remove(ti); if (p.musicIndex > ti) p.musicIndex--; App.save(this); m.saveLists(); }));
+            mTracks.addView(r);
+        }
+    }
+    TextView mini(String s, View.OnClickListener l) {
+        TextView t = tv(s, 14, DIM); t.setGravity(Gravity.CENTER); t.setOnClickListener(v -> { press(v); l.onClick(v); });
+        t.setLayoutParams(new LinearLayout.LayoutParams(dp(36), dp(40))); return t;
+    }
+    void importAudio(Intent data) {
+        java.util.List<Uri> us = new java.util.ArrayList<>();
+        if (data.getClipData() != null) for (int i = 0; i < data.getClipData().getItemCount(); i++) us.add(data.getClipData().getItemAt(i).getUri());
+        else if (data.getData() != null) us.add(data.getData());
+        int n = 0;
+        for (Uri u : us) {
+            try { getContentResolver().takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception e) { Log.add("music: no lasting access to " + u); }
+            String title = "Imported track";
+            try (android.database.Cursor c = getContentResolver().query(u, new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+                if (c != null && c.moveToFirst()) title = c.getString(0).replaceFirst("\\.[A-Za-z0-9]{2,4}$", "");
+            } catch (Exception ignored) { }
+            Music.get(this).add(u.toString(), title); n++;
+        }
+        Log.add("music: imported " + n + " file(s)");
+        toast(n == 1 ? "Added 1 track" : "Added " + n + " tracks");
+        drawMusic();
+    }
+
+    /** Compact player over every page: title + ⏮ ⏯ ⏭, folds to a small ♪ chip. Shown while music is on. */
+    View buildMiniPlayer() {
+        FrameLayout f = new FrameLayout(this);
+        LinearLayout full = row(); full.setPadding(dp(14), dp(4), dp(6), dp(4)); full.setBackground(Ui.glass(this, 26, true)); full.setElevation(dp(6));
+        miniTitle = tv("", 13, TXT); miniTitle.setSingleLine(true); miniTitle.setEllipsize(android.text.TextUtils.TruncateAt.END); miniTitle.setMaxWidth(dp(150));
+        miniTitle.setOnClickListener(v -> show("music", true));
+        full.addView(miniTitle);
+        full.addView(mini("⏮︎", v -> Music.get(this).prev()));
+        miniPlay = mini("▶︎", v -> Music.get(this).toggle()); miniPlay.setTextColor(TXT); miniPlay.setTextSize(16); full.addView(miniPlay);
+        full.addView(mini("⏭︎", v -> Music.get(this).next(true)));
+        full.addView(mini("–", v -> { p.musicMini = false; App.save(this); updateMini(); }));
+        TextView chip = tv("♪", 18, Ui.ON_PRIMARY); chip.setGravity(Gravity.CENTER); chip.setBackground(Ui.solid(this, Ui.PRIMARY, 24)); chip.setElevation(dp(6));
+        chip.setOnClickListener(v -> { p.musicMini = true; App.save(this); updateMini(); });
+        f.addView(full, new FrameLayout.LayoutParams(-2, dp(48), Gravity.END | Gravity.BOTTOM));
+        f.addView(chip, new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.END | Gravity.BOTTOM));
+        mini = f; miniFull = full; miniChip = chip;
+        updateMini();
+        return f;
+    }
+    FrameLayout.LayoutParams miniLp() { FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2, Gravity.END | Gravity.BOTTOM); lp.setMargins(0, 0, dp(14), dp(14)); return lp; }
+    void updateMini() {
+        if (mini == null) return;
+        Music m = Music.get(this);
+        boolean show = p.musicOn;
+        if ((mini.getVisibility() == View.VISIBLE) != show) {
+            mini.setVisibility(show ? View.VISIBLE : View.GONE);
+            if (show && Ui.motion()) { mini.setAlpha(0); mini.setTranslationY(dp(12)); mini.animate().alpha(1).translationY(0).setDuration(200).setInterpolator(Ui.EASE_OUT).start(); }
+        }
+        boolean full = p.musicMini;
+        if ((miniFull.getVisibility() == View.VISIBLE) != full) {
+            View in = full ? miniFull : miniChip, out = full ? miniChip : miniFull;
+            out.setVisibility(View.GONE); in.setVisibility(View.VISIBLE);
+            if (Ui.motion()) { in.setAlpha(0); in.setScaleX(0.92f); in.setScaleY(0.92f); in.animate().alpha(1).scaleX(1).scaleY(1).setDuration(180).setInterpolator(Ui.EASE_OUT).start(); }
+        } else miniChip.setVisibility(full ? View.GONE : View.VISIBLE);
+        miniTitle.setText(m.title());
+        miniPlay.setText(m.playing() ? "❚❚" : "▶︎");
+    }
+
     // ------------------------------------------------------------------ view helpers (same API as before, new look)
     interface IntOp { void step(int d); }
     interface Str { String get(); }
@@ -1154,7 +1442,7 @@ public class MainActivity extends Activity {
     View stepper(String label, Str val, IntOp op) {
         LinearLayout r = row(); r.setPadding(0, dp(4), 0, dp(4));
         TextView l = tv(label, 13, TXT); r.addView(l, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView v = tv(val.get(), 13, 0xFF8FE3FF); v.setGravity(Gravity.CENTER); v.setTypeface(Typeface.DEFAULT_BOLD); r.addView(v, new LinearLayout.LayoutParams(dp(84), -2));
+        TextView v = tv(val.get(), 13, Ui.CYAN); v.setGravity(Gravity.CENTER); v.setTypeface(Typeface.DEFAULT_BOLD); r.addView(v, new LinearLayout.LayoutParams(dp(64), -2));
         r.addView(button("−", 0, x -> { op.step(-1); App.save(this); v.setText(val.get()); }), new LinearLayout.LayoutParams(dp(44), dp(40)));
         r.addView(button("+", 0, x -> { op.step(1); App.save(this); v.setText(val.get()); }), new LinearLayout.LayoutParams(dp(44), dp(40)));
         return r;
@@ -1163,8 +1451,8 @@ public class MainActivity extends Activity {
         Switch s = new Switch(this); s.setText(label); s.setTextColor(TXT); s.setTextSize(13); s.setChecked(on);
         s.setPadding(0, dp(8), 0, dp(8));
         int[][] st = {{android.R.attr.state_checked}, {}};
-        s.setThumbTintList(new android.content.res.ColorStateList(st, new int[]{Ui.CYAN, 0xFFB0ACC8}));
-        s.setTrackTintList(new android.content.res.ColorStateList(st, new int[]{0x998B5CF6, 0x553A3555}));
+        s.setThumbTintList(new android.content.res.ColorStateList(st, new int[]{Ui.light ? PURPLE : Ui.CYAN, Ui.light ? 0xFFFFFFFF : 0xFFB8B9C0}));
+        s.setTrackTintList(new android.content.res.ColorStateList(st, new int[]{Ui.alpha(PURPLE, 0.55f), Ui.alpha(TXT, 0.18f)}));
         s.setOnCheckedChangeListener((CompoundButton b, boolean v) -> { cb.set(v); App.save(this); });
         return s;
     }
@@ -1224,34 +1512,42 @@ public class MainActivity extends Activity {
         }));
     }
 
+    /** A card: hairline-bordered surface; tap its title to fold it away (the fold animates with the layout, and
+     *  is instant with animations off). */
     LinearLayout card(String title) {
         LinearLayout c = new LinearLayout(this); c.setOrientation(LinearLayout.VERTICAL);
-        c.setPadding(dp(16), dp(14), dp(16), dp(14));
-        c.setBackground(Ui.glass(this, 18, false));
-        LinearLayout tr = row(); tr.setPadding(0, 0, 0, dp(8));
-        View accent = new View(this); accent.setBackground(Ui.pill(this, PURPLE, Ui.CYAN, 2));
-        tr.addView(accent, new LinearLayout.LayoutParams(dp(3), dp(16)));
-        TextView t = tv(title, 15, TXT); t.setTypeface(Typeface.DEFAULT_BOLD); t.setPadding(dp(8), 0, 0, 0); tr.addView(t);
+        c.setPadding(dp(18), dp(16), dp(18), dp(16));
+        c.setBackground(Ui.glass(this, 22, false));
+        LinearLayout tr = row(); tr.setPadding(0, 0, 0, dp(10));
+        TextView t = tv(title, 15, TXT); t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL)); tr.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView chev = tv("⌄", 16, DIM); tr.addView(chev);
         c.addView(tr);
+        if (Ui.motion()) { android.animation.LayoutTransition lt = new android.animation.LayoutTransition(); lt.setDuration(Ui.motionLevel >= 2 ? 200 : 120); c.setLayoutTransition(lt); }
+        tr.setOnClickListener(v -> {
+            boolean fold = c.getChildCount() > 1 && c.getChildAt(1).getVisibility() == View.VISIBLE;
+            for (int i = 1; i < c.getChildCount(); i++) c.getChildAt(i).setVisibility(fold ? View.GONE : View.VISIBLE);
+            if (Ui.motion()) chev.animate().rotation(fold ? -90 : 0).setDuration(180).setInterpolator(Ui.EASE_OUT).start(); else chev.setRotation(fold ? -90 : 0);
+        });
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.topMargin = dp(12);
         root.addView(c, lp);
         return c;
     }
     LinearLayout row() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.HORIZONTAL); l.setGravity(Gravity.CENTER_VERTICAL); return l; }
     TextView tv(String s, int sp, int col) { TextView t = new TextView(this); t.setText(s); t.setTextSize(sp); t.setTextColor(col); return t; }
-    /** col PURPLE = primary (purple gradient), BLUE = accent (purple → cyan), 0 = glass, anything else = that colour. */
+    /** col PURPLE = primary (solid pill in the theme's button colour), BLUE = secondary (outlined pill), 0 = quiet
+     *  surface, anything else = that colour (status colours: ✓ / ✗). */
     Button button(String s, int col, View.OnClickListener l) {
-        Button b = new Button(this); b.setText(s); b.setAllCaps(false); b.setTextColor(Color.WHITE); b.setTextSize(14);
-        b.setBackground(col == PURPLE ? Ui.pill(this, 0xFF7C3AED, PURPLE, 14) : col == BLUE ? Ui.pill(this, PURPLE, 0xFF0EA5E9, 14)
-                : col == 0 ? Ui.glass(this, 14, true) : solid(col));
+        Button b = new Button(this); b.setText(s); b.setAllCaps(false); b.setTextSize(14);
+        b.setTextColor(col == PURPLE ? Ui.ON_PRIMARY : col == BLUE || col == 0 ? TXT : Color.WHITE);
+        GradientDrawable out = new GradientDrawable(); out.setCornerRadius(dp(24)); out.setStroke(dp(1), Ui.alpha(TXT, 0.28f)); out.setColor(0);
+        b.setBackground(col == PURPLE ? Ui.solid(this, Ui.PRIMARY, 24) : col == BLUE ? out : col == 0 ? Ui.glass(this, 24, true) : Ui.solid(this, col, 24));
         b.setStateListAnimator(null);
         b.setMinHeight(dp(46)); b.setMinimumHeight(dp(46)); b.setPadding(dp(12), dp(8), dp(12), dp(8));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.setMargins(dp(3), dp(4), dp(3), dp(4)); b.setLayoutParams(lp);
         b.setOnClickListener(l == null ? null : v -> { press(v); l.onClick(v); });
         return b;
     }
-    GradientDrawable solid(int col) { GradientDrawable d = new GradientDrawable(); d.setColor(col); d.setCornerRadius(dp(14)); return d; }
-    int dp(float v) { return Math.round(v * getResources().getDisplayMetrics().density); }
+        int dp(float v) { return Math.round(v * getResources().getDisplayMetrics().density); }
     static final String SHIZUKU = "moe.shizuku.privileged.api";
     boolean shizukuInstalled() { try { getPackageManager().getPackageInfo(SHIZUKU, 0); return true; } catch (Exception e) { return false; } }
     /** Shizuku from the Play Store, or its official GitHub page in the browser. The in-app installer is gone: the

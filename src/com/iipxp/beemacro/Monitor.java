@@ -207,8 +207,12 @@ final class Monitor {
                             motionGrid = g; motionGridTime = now;
                         }
                         // World objects only where the ground model applies (Pine Tree); at the hive everything is "not ground"
-                        boolean field = r.field == Vision.Field.PINE_TREE;
-                        dets = field ? Detector.detect(fpx0, fw0, fh0, cat, lib, p.boxMinConf, ignoreRemapped(ro), false) : new ArrayList<>();   // stage 1 only: cheap
+                        // Red hive: red fields get their own ground model (red petals + yellow centres count as ground)
+                        Engine en = Engine.inst;
+                        boolean farming = en != null && !en.finished() && (en.phase.startsWith("Farming") || en.phase.startsWith("Collecting") || en.phase.startsWith("Correcting") || en.phase.startsWith("Lining"));
+                        boolean redField = Detector.redGround(p.redHive(), p.field, r.field, farming);
+                        boolean field = r.field == Vision.Field.PINE_TREE || redField;
+                        dets = field ? Detector.detect(fpx0, fw0, fh0, cat, lib, p.boxMinConf, ignoreRemapped(ro), false, redField) : new ArrayList<>();   // stage 1 only: cheap
                         int ax = Math.round(p.playerX * fw0), ay = Math.round(p.playerY * fh0), rad = Math.round(0.12f * fh0);
                         // Stages 2-3 per tracked object, not per candidate: new objects first, re-checked every RECHECK_MS,
                         // at most CLASSIFY_BUDGET per frame; in between the last answer is carried (and not re-voted).
@@ -280,7 +284,7 @@ final class Monitor {
         for (Detector.Tracker.Track t : tracker.snapshot()) {
             String c = t.confirmed(); if (t.d.buff || c == null) continue;
             if (n++ >= 6) { s.append("\n  …"); break; }
-            s.append(String.format(Locale.US, "\n  #%d %s %.2f · %d px away · priority %d", t.id, c, t.d.conf, (int) Math.hypot(t.d.cx() - ax, t.d.cy() - ay), Engine.prioOf(p, t.d.cat)));
+            s.append(String.format(Locale.US, "\n  #%d %s %.2f · %d px away · priority %d", t.id, c, t.d.conf, (int) Math.hypot(t.d.cx() - ax, t.d.cy() - ay), Engine.prioOf(p, t.d)));
         }
         if (n == 0) s.append("\n  none confirmed");
         if (r != null && r.screen == Vision.Screen.GAME) s.append("\nFARMING STATUS\n  Field: ").append(r.field == Vision.Field.PINE_TREE ? "Pine Tree Forest" : r.field == Vision.Field.OTHER_FIELD ? "another field" : "not in a field")

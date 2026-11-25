@@ -25,7 +25,7 @@ final class SplashView extends View {
     private static final int TOTAL = 1750, FADE_AT = 1550;
     private static final Interpolator EO = new PathInterpolator(0.23f, 1f, 0.32f, 1f);        // ease-out
     private static final Interpolator EIO = new PathInterpolator(0.77f, 0f, 0.175f, 1f);      // ease-in-out
-    private static final int BG = 0xFF0F0F14, HONEY = 0xFFFFC233;
+    private static final int HONEY = 0xFFFFC233; private final int BG = Ui.BG0;
     private static final int[] RING = {0xFFFFC233, 0xFFFF8A3D, 0xFFFF4FA0, 0xFF7C5CFF, 0xFF4FA8FF, 0xFFFFC233};
 
     private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG), ball = new Paint(Paint.ANTI_ALIAS_FLAG),
@@ -44,7 +44,7 @@ final class SplashView extends View {
         dp = c.getResources().getDisplayMetrics().density;
         ring.setStyle(Paint.Style.STROKE); ring.setStrokeCap(Paint.Cap.ROUND); ring.setStrokeJoin(Paint.Join.ROUND); ring.setStrokeWidth(5 * dp);
         ball.setColor(Color.WHITE);
-        title.setColor(Color.WHITE); title.setTextAlign(Paint.Align.CENTER); title.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD)); title.setTextSize(30 * dp);
+        title.setColor(Ui.TXT); title.setTextAlign(Paint.Align.CENTER); title.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD)); title.setTextSize(30 * dp);
         setClickable(true);
     }
 
