@@ -222,6 +222,9 @@ public final class Profile {
     // AI (AiBrain / AiPower). Pattern learning: before each trip pick from this shortlist of Natro patterns, score it by
     // bag % per minute, remember it across runs. Heat guard: slow vision when warm, cool down at the hive when hot.
     public boolean aiPatternLearn = false, aiThermal = true;
+    /** Never pause by itself (keyboard mode): its own pauses become retry / reset / rejoin, like overnight. Your Pause
+     *  button, the low-battery stop and setup questions at Start still pause. */
+    public boolean noAutoPause = true;
     public String aiPatterns = "Snake,e_lol,Squares,Lines";
     public float aiExplore = 0.15f, aiThrottleC = 41f, aiPauseC = 45f, aiResumeC = 39f;
 

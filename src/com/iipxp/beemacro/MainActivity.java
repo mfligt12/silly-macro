@@ -643,6 +643,7 @@ public class MainActivity extends Activity {
         s.addView(toggle("Keep Samsung's game touch lock away (harmless key when idle 45 s)", p.keepAlive, on -> p.keepAlive = on));
         s.addView(toggle("Show temperature (°C / °F) and battery under the overlay", p.showTemp, on -> p.showTemp = on));
         LinearLayout ai = card("AI");
+        ai.addView(toggle("Never pause by itself (retries, resets or rejoins instead; your Pause button still works)", p.noAutoPause, on -> p.noAutoPause = on));
         ai.addView(toggle("Heat guard: slower vision when warm, rest at " + Math.round(p.aiPauseC) + "°C until " + Math.round(p.aiResumeC) + "°C", p.aiThermal, on -> p.aiThermal = on));
         ai.addView(stepper("Heat guard: rest at", () -> Math.round(p.aiPauseC) + " °C", d -> { p.aiPauseC = Math.max(38, Math.min(52, p.aiPauseC + d)); p.aiResumeC = p.aiPauseC - 6; p.aiThrottleC = p.aiPauseC - 4; }));
         ai.addView(toggle("Learn the best pattern (tries " + p.aiPatterns.replace(",", ", ") + "; keeps the fastest bag fill)", p.aiPatternLearn, on -> p.aiPatternLearn = on));

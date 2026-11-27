@@ -117,7 +117,15 @@ final class Engine implements Runnable {
         if (done) return;
         // overnight, the macro's own pauses become "recover and carry on" (only on its own thread: your Pause button
         // runs on the screen thread, where that throw crashed the app, 2026-11-21 02:53 / 03:30 / 04:05)
-        if (night() && !why.startsWith("Battery") && Thread.currentThread() == worker) { Log.add("overnight, not pausing: " + why); throw new Recover("overnight: " + why); }
+        // "Never pause by itself" (Profile.noAutoPause, keyboard mode) does the same during the day: the macro's own
+        // pauses became random stops mid-run (shift lock misreads, a menu for a few seconds, a slow conversion)
+        if (unattended() && !why.startsWith("Battery") && Thread.currentThread() == worker) { Log.add((night() ? "overnight" : "never-pause mode") + ", not pausing: " + why); throw new Recover("not pausing: " + why); }
+        pauseNow(why);
+    }
+    /** A pause that waits for you even in overnight / never-pause mode: only for things you set up or must decide
+     *  (auto return off, pollen in the bag at Start), never for something the macro can retry. */
+    void pauseForYou(String why) { if (done) return; pauseNow(why); }
+    private void pauseNow(String why) {
         reason = why; paused = true; stats.interruptions++;
         in.emergencyRelease();
         Log.add("PAUSED: " + why);
@@ -160,7 +168,7 @@ final class Engine implements Runnable {
                     Log.add("recover #" + recoveries + ": " + r.getMessage());
                     hook("problem", "↺ Reset #" + recoveries, r.getMessage(), Webhook.GOLD, true);
                     if (!p.recovery || recoveries > p.maxRecoveries) {
-                        if (night()) { checkpoint(); rejoinUntilBack("recoveries kept failing: " + r.getMessage()); }
+                        if (unattended()) { checkpoint(); rejoinUntilBack("recoveries kept failing: " + r.getMessage()); }
                         else { pause("Navigation failed " + recoveries + "×: " + r.getMessage()); checkpoint(); }
                         recoveries = 0;
                     }
@@ -169,7 +177,7 @@ final class Engine implements Runnable {
                 }
                 catch (Stopped s) { throw s; }
                 catch (RuntimeException crash) {
-                    if (!night()) throw crash;
+                    if (!unattended()) throw crash;
                     stats.errors++; Log.add("engine error, carrying on overnight: " + android.util.Log.getStackTraceString(crash));
                     in.emergencyRelease(); sleep(30_000);
                 }
@@ -199,6 +207,9 @@ final class Engine implements Runnable {
      *  is full, walk home (no respawn: a respawn empties the bag), convert at the hive. */
     private boolean firstKbTrip = true;
     private boolean night() { return p.overnight && p.keyboard(); }
+    /** Nobody should have to press Resume: overnight, or "Never pause by itself" (on by default, keyboard mode).
+     *  The macro retries, resets or rejoins instead of pausing. */
+    private boolean unattended() { return night() || (p.keyboard() && p.noAutoPause); }
 
     /** After every trip: honey stats, the running report, and the battery check. */
     private long lastHourly;
@@ -327,14 +338,14 @@ final class Engine implements Runnable {
             Vision.Result r = waitFor(this::bagKnown, 3000);
             if (r != null && r.pollen >= 5) {   // live: paused over 1%, not worth stopping for
                 if (promptKnown(r) && (r.prompt == Vision.Prompt.TAP_BLUE || r.prompt == Vision.Prompt.TAP_RED)) { Log.add(String.format(Locale.US, "start: bag at %.0f%% and at the hive, converting before the first reset", r.pollen)); phase("Converting", "convert"); convert(); }
-                else { pause(String.format(Locale.US, "Your bag has %.0f%% pollen and you are not at your hive. Starting resets the character and empties the bag. Convert first, or press Resume to continue anyway.", r.pollen)); checkpoint(); }
+                else { pauseForYou(String.format(Locale.US, "Your bag has %.0f%% pollen and you are not at your hive. Starting resets the character and empties the bag. Convert first, or press Resume to continue anyway.", r.pollen)); checkpoint(); }
             }
         }
         phase("Respawn → hive", "nav"); nav = "Reset → own hive";
         respawn();
         phase("Verify hive", "nav");
         verifyHive();
-        if (!p.autoReturn) { pause("Auto return to field is off"); checkpoint(); }
+        if (!p.autoReturn) { pauseForYou("Auto return to field is off"); checkpoint(); }
         phase("Camera reset", "nav");
         alignCamera();
         ensureHive();
@@ -811,7 +822,7 @@ final class Engine implements Runnable {
         phase("Verify hive", "nav");
         verifyHive();
         if (p.autoConvert) { phase("Converting", "convert"); convert(); }
-        if (!p.autoReturn) { pause("Auto return to field is off"); checkpoint(); }
+        if (!p.autoReturn) { pauseForYou("Auto return to field is off"); checkpoint(); }
         ensureShiftLock();
         waitHasteClear();
         phase("To Pine Tree", "nav"); nav = "Your route: hive → cannon → glide to Pine Tree";
@@ -1243,15 +1254,51 @@ final class Engine implements Runnable {
 
     /** Shift lock keeps the camera from auto-turning when strafing (Roblox mobile's default Follow camera does),
      *  which is what makes PC Natro paths valid here. Measured: on = blue ring, off = gray ring. */
+    /** Decided by a VOTE over several fresh frames. It used to act on a single frame: one misread of the thin ring
+     *  (it is translucent, over a bright or yellow floor) pressed Shift and turned a working lock OFF, the next tries
+     *  flipped it back and forth, and after 3 the run paused. Now: Shift is pressed only when most frames clearly say
+     *  off and none say on, at most once, and checked afterwards; if the ring reads "off" both before and after the
+     *  press, the reading can't be trusted here, so the press is undone (the lock stays as you had it). Never pauses. */
     private void ensureShiftLock() {
-        for (int i = 0; i < 3; i++) {
-            Vision.Result r = waitFor(this::sure, 3000);
-            if (r != null && r.shiftLock == 1) return;
-            if (r != null && r.shiftLock == 0) { if (p.keyboard()) in.key(Keys.SHIFT, 60); else in.tap(p.shiftTapX, p.shiftTapY); Log.add("shift lock: was off, toggled"); sleep(900); }
-            else sleep(500);
+        int[] v = shiftVotes();
+        if (shiftOn(v)) return;
+        if (!shiftOff(v)) { shiftNote("ring not readable (" + votes(v) + "), leaving Shift Lock as it is"); return; }
+        shiftToggle();
+        Log.add("shift lock: off (" + votes(v) + "), pressed Shift");
+        sleep(900);
+        int[] after = shiftVotes();
+        if (shiftOn(after)) { Log.add("shift lock: now on (" + votes(after) + ")"); return; }
+        if (shiftOff(after)) {
+            shiftToggle(); sleep(600);
+            shiftNote("ring read off before and after pressing Shift (" + votes(after) + "): reading unreliable here, undid the press. "
+                    + (p.keyboard() ? "If paths drift, check Roblox Settings → Shift Lock Switch is On." : "If paths drift, turn shift lock on (bottom-left button)."));
+            return;
         }
-        pause(p.keyboard() ? "Couldn't turn on Shift Lock. In Roblox Settings set Shift Lock Switch to On, then resume." : "Couldn't confirm Roblox shift lock is on (lock button bottom-left). Turn it on and resume.");
-        checkpoint();
+        shiftNote("pressed Shift, can't confirm the result (" + votes(after) + ")");
+    }
+    private void shiftToggle() { if (p.keyboard()) in.key(Keys.SHIFT, 60); else in.tap(p.shiftTapX, p.shiftTapY); }
+    /** {off, on, frames read}: up to 6 fresh, confident frames within 4 s. */
+    private int[] shiftVotes() {
+        int off = 0, on = 0, n = 0;
+        long end = SystemClock.uptimeMillis() + 4000, since = SystemClock.uptimeMillis();
+        while (n < 6 && SystemClock.uptimeMillis() < end) {
+            checkpoint();
+            Vision.Result r = Monitor.fresh(since, 1500);
+            if (r == null) continue;
+            since = Monitor.lastTime;
+            if (!sure(r)) continue;
+            n++;
+            if (r.shiftLock == 1) on++; else if (r.shiftLock == 0) off++;
+        }
+        return new int[]{off, on, n};
+    }
+    private static boolean shiftOn(int[] v) { return v[1] >= 2 && v[1] > v[0]; }
+    private static boolean shiftOff(int[] v) { return v[0] >= 4 && v[1] == 0; }
+    private static String votes(int[] v) { return "on " + v[1] + ", off " + v[0] + " of " + v[2] + " frames"; }
+    private long lastShiftNote;
+    private void shiftNote(String m) {
+        decide(decision, "Shift Lock: " + m, 0.6);
+        if (SystemClock.uptimeMillis() - lastShiftNote > 120_000) { lastShiftNote = SystemClock.uptimeMillis(); Log.add("shift lock: " + m); }
     }
 
     /** Vision-ended walk (Natro nm_gotoCannon / nm_findHiveSlot): hold until the target prompt shows, then check it
@@ -1310,11 +1357,11 @@ final class Engine implements Runnable {
         if (r.screen == Vision.Screen.UNKNOWN && Vision.playable(r, true) && SystemClock.uptimeMillis() - unexpectedSince > 30_000) {
             unexpectedSince = 0; noHudNow = true; hudBackFrames = 0; noHudNote("the counters stopped being readable"); return r;
         }
-        if (night() && SystemClock.uptimeMillis() - unexpectedSince > p.rejoinAfterSec * 1000L) {
+        if (unattended() && SystemClock.uptimeMillis() - unexpectedSince > p.rejoinAfterSec * 1000L) {
             unexpectedSince = 0; rejoinUntilBack("game screen gone for " + p.rejoinAfterSec + " s (" + r.screen + ")");
             throw new Recover("rejoined the server");
         }
-        if (!night() && SystemClock.uptimeMillis() - unexpectedSince > (r.screen == Vision.Screen.DARK ? 10000 : 4000)) {
+        if (!unattended() && SystemClock.uptimeMillis() - unexpectedSince > (r.screen == Vision.Screen.DARK ? 10000 : 4000)) {
             final long since = unexpectedSince; unexpectedSince = 0;
             // A Bee Swarm window, the chat or a notification over the counters is usually gone in a few seconds:
             // wait for the game to come back before pausing (Discord: "stops by itself", then "works again").
