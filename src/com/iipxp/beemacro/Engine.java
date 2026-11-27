@@ -226,15 +226,25 @@ final class Engine implements Runnable {
     private final StringBuilder tourReport = new StringBuilder();
     private boolean touring() { return tourSaved != null; }
     private void tourStart() {
-        tourSaved = new String[]{p.field, p.pattern, p.patternSize, String.valueOf(p.patternWidth)};
+        tourSaved = new String[]{p.field, p.pattern, p.patternSize, String.valueOf(p.patternWidth), String.valueOf(p.fieldRotate), p.sprinklerLoc};
         tourLeft = Routes.FIELDS.length; tourTries = 0; tourIssues.clear(); tourReport.setLength(0);
-        p.fieldDefaults(); App.save(in);
+        tourSetup();
         Log.add("tour: START — " + tourLeft + " fields, " + p.tourMinutes + " min each, Natro's pattern per field, walk paths only");
         tourAnnounce();
     }
+    /** Natro's pattern for the field, and a neutral setup: your field camera turn and corner sprinkler spot are Pine Tree
+     *  settings, and on other fields they walked the character out into neighbouring red fields (tour 2026-11-27, Bamboo,
+     *  Blue Flower). Pine Tree keeps your own. */
+    private void tourSetup() {
+        p.fieldDefaults();
+        boolean pine = p.field.equals("pinetree");
+        p.fieldRotate = pine ? Integer.parseInt(tourSaved[4]) : 0;
+        p.sprinklerLoc = pine ? tourSaved[5] : "Center";
+        App.save(in);
+    }
     private void tourAnnounce() {
         Log.add("tour: FIELD " + (Routes.FIELDS.length - tourLeft + 1) + "/" + Routes.FIELDS.length + " " + Routes.name(p.field)
-                + " — " + p.pattern + " " + p.patternSize + " ×" + p.patternWidth);
+                + " — " + p.pattern + " " + p.patternSize + " ×" + p.patternWidth + (p.fieldRotate != 0 ? ", camera turn " + p.fieldRotate : "") + ", sprinkler " + p.sprinklerLoc);
         decide("Field tour", "Testing " + Routes.name(p.field) + " with Natro's pattern " + p.pattern + ".", "tour field " + (Routes.FIELDS.length - tourLeft + 1) + "/" + Routes.FIELDS.length, "farm " + p.tourMinutes + " min, convert, next field", 1);
     }
     /** After each trip (problem = the Recover message, null when the trip went through). */
@@ -254,13 +264,13 @@ final class Engine implements Runnable {
             stop("Field tour finished"); throw new Stopped();
         }
         int i = Routes.index(p.field);
-        p.field = Routes.FIELDS[(i + 1) % Routes.FIELDS.length][0]; p.fieldDefaults(); App.save(in);
+        p.field = Routes.FIELDS[(i + 1) % Routes.FIELDS.length][0]; tourSetup();
         tourTries = 0; tourIssues.clear(); recoveries = 0;
         tourAnnounce();
     }
     private void tourEnd() {
         if (!touring()) return;
-        p.field = tourSaved[0]; p.pattern = tourSaved[1]; p.patternSize = tourSaved[2]; p.patternWidth = Integer.parseInt(tourSaved[3]);
+        p.field = tourSaved[0]; p.pattern = tourSaved[1]; p.patternSize = tourSaved[2]; p.patternWidth = Integer.parseInt(tourSaved[3]); p.fieldRotate = Integer.parseInt(tourSaved[4]); p.sprinklerLoc = tourSaved[5];
         p.fieldTour = false; App.save(in);
         if (tourReport.length() > 0) Log.add("tour: report so far —" + tourReport.toString().replace("\n", "\n  "));
         Log.add("tour: ended, your field and pattern are back (" + p.field + " — " + p.pattern + ")");
@@ -1877,7 +1887,7 @@ final class Engine implements Runnable {
         try (java.io.InputStream is = in.getAssets().open("patterns/" + pat() + ".ahk")) { return true; } catch (Exception e) { return false; }
     }
     /** The hedges keep us in: corner mode, or Skillet at a corner spot (it walks into them on purpose). No edge steering then. */
-    private boolean wallBound() { return corner != null || (!natroPattern && cornerPlanned()); }
+    private boolean wallBound() { return corner != null || (!natroPattern && cornerSpot()); }
 
     // ---- drift by sight: loop closure against the view where farming started (VisualAnchor)
     private VisualAnchor anchorRef; private int anchorMiss;
@@ -1965,7 +1975,12 @@ final class Engine implements Runnable {
     private Object[] corner;
     private boolean cornerPlanned() {
         String l = p.sprinklerLoc;
-        return p.cornerAnchor && p.keyboard() && (l.contains("Upper") || l.contains("Lower")) && (l.contains("Left") || l.contains("Right"));
+        return false;   // corner line-up removed (2026-11-27): patterns run from where the sprinkler walk ends, no wall walks
+    }
+    /** The sprinkler spot is a corner (Skillet walks into the hedges there on purpose: no edge steering). */
+    private boolean cornerSpot() {
+        String l = p.sprinklerLoc;
+        return p.keyboard() && (l.contains("Upper") || l.contains("Lower")) && (l.contains("Left") || l.contains("Right"));
     }
     /** The corner in the pattern's view (after the field camera turns) and how far out the pattern has to start to fit. */
     private Object[] cornerPlan(List<Moves.Step> sk) {
@@ -2080,7 +2095,7 @@ final class Engine implements Runnable {
             throw new Recover("the game's messages name another field, not Pine Tree Forest");
         boolean hidden = pine < 3 && other == 0 && arrivalOk && sprinklerPlaced;
         if (hidden) Log.add("field check: flowers hidden here (under the leaves); trusting the arrival check and the placed sprinkler");
-        else if (pine < 3 || other > pine) throw new Recover(other > pine ? "landed in another field (red flowers), not Pine Tree" : "not standing in Pine Tree Forest");
+        else if (pine < 3 || other > pine) throw new Recover(other > pine ? "landed in another field (red flowers), not " + Routes.name(p.field) : "not standing in " + Routes.name(p.field));
         nav = Routes.name(p.field) + (Routes.blueField(p.field) ? " (flowers confirmed " + pine + "/6)" : "");
         double startPct = r0 == null ? 0 : r0.pollen;
         long t0 = SystemClock.uptimeMillis();
