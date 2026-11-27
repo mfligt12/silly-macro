@@ -1926,7 +1926,11 @@ final class Engine implements Runnable {
         // the field map reads blue/white fields; under Pine Tree's leaves the shade reads as an edge, so no edge stop there
         final boolean map = fieldOn(), edges = map && !p.field.equals("pinetree");
         double span = fieldSpan(k);
-        in.holdUntil(MacroService.set(new Moves.Key[]{k}), Moves.tileMs(span, p.moveSpeed), () -> {
+        // + the time the stillness check needs to see the wall: it skips the first 0.7 s, motion is measured every 0.8 s,
+        // then 0.45 s of stillness. Without it the walk ended against Pepper's wall before the check could fire
+        // (recorded 2026-11-26 22:49: camera pressed into the pepper, logged "nothing within the field's length").
+        long capMs = Moves.tileMs(span, p.moveSpeed) + 1600;
+        in.holdUntil(MacroService.set(new Moves.Key[]{k}), capMs, () -> {
             long now = SystemClock.uptimeMillis();
             if (now - t0 < 700) return false;
             FieldMap.Read r = Monitor.fieldRead;
@@ -1945,6 +1949,8 @@ final class Engine implements Runnable {
             return false;
         });
         long ms = SystemClock.uptimeMillis() - t0;
+        // time ran out while already standing still (fresh motion reading under STILL): that is the wall
+        if (why[0] == NOT_REACHED && SystemClock.uptimeMillis() - Monitor.motionTime < 1500 && Monitor.motion < STILL) why[0] = WALL;
         checkpoint();
         if (why[0] == LEFT_FIELD) {   // back over the edge we just crossed
             walkHold(new Moves.Step('H', new Moves.Key[]{Moves.flip(k)}, 1.0, (int) Moves.tileMs(1.5, p.moveSpeed), null));
