@@ -16,12 +16,13 @@ import android.widget.TextView;
 
 /**
  * First-run setup, shown after sign-in until it's finished: one page per thing the macro needs, in order, with a live
- * check where the app can see it (key sender, Accessibility, screen capture, hive slot, move speed, Smallest width).
+ * check where the app can see it (key sender, Accessibility, hive slot, move speed, Smallest width). Screen reading needs no
+ * page: it starts by itself with the key sender.
  * Next on an unfinished page asks "continue anyway?". The page is saved, so leaving and coming back resumes there;
  * Settings → Run setup again starts over. Players who already confirmed a hive slot can skip it on the first page.
  */
 final class SetupWizard {
-    static final String[] TITLES = {"Welcome", "Keyboard + mouse (Shizuku)", "Turn on Silly Macro", "Screen capture", "Your hive",
+    static final String[] TITLES = {"Welcome", "Keyboard + mouse (Shizuku)", "Turn on Silly Macro", "Your hive",
             "Move speed", "Sprinkler", "Roblox settings", "Discord & private server (optional)", "All set"};
     private final MainActivity a; private final Profile p;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -117,7 +118,7 @@ final class SetupWizard {
                 if (!a.shizukuInstalled()) btn(col, "Get Shizuku", 0, v -> a.getShizuku());
                 btn(col, "Start the keyboard + mouse", a.PURPLE, v -> {
                     a.toast("Starting the keyboard + mouse…");
-                    new Thread(() -> { String m = ShizukuKeys.start(a); Log.add("shizuku: " + m); a.runOnUiThread(() -> a.toast(m)); }).start();
+                    new Thread(() -> { String m = ShizukuKeys.start(a); Log.add("shizuku: " + m); a.runOnUiThread(() -> { a.toast(m); CaptureService.ensure(a); }); }).start();
                 });
                 check = () -> !a.shizukuInstalled() ? "Shizuku isn't installed" : Keys.connect(a) && Keys.ping() ? null : "The keyboard + mouse isn't running yet: start Shizuku, then press the button";
                 break;
@@ -128,11 +129,6 @@ final class SetupWizard {
                 check = () -> MacroService.inst != null ? null : "Silly Macro isn't switched on in Accessibility yet";
                 break;
             case 3:
-                text(col, "The macro reads Bee Swarm from the screen. Press the button and pick \"Entire screen\" (not \"A single app\": that gives a black screen).\n\nAfter every update of Silly Macro, allow it again (Home step 3).");
-                btn(col, "Allow screen capture", a.PURPLE, v -> a.requestCapture());
-                check = () -> CaptureService.inst != null ? null : "Screen capture isn't on yet";
-                break;
-            case 4:
                 text(col, "Which hive slot do you use? Slot 3 (straight ahead of the spawn) is the most tested. Pick it with − / +, then Confirm.");
                 TextView hs = a.tv("", 18, a.TXT); hs.setTypeface(Typeface.DEFAULT_BOLD); hs.setGravity(Gravity.CENTER); col.addView(hs);
                 Runnable show = () -> hs.setText("Slot " + p.hiveSlot + (p.hiveConfirmed ? "  ✔ confirmed" : ""));
@@ -145,7 +141,7 @@ final class SetupWizard {
                 col.addView(a.toggle("If this hive is taken, use the nearest free one (3 first)", p.autoHiveSlot, on -> p.autoHiveSlot = on));
                 check = () -> p.hiveConfirmed ? null : "Confirm your hive slot";
                 break;
-            case 5:
+            case 4:
                 text(col, "Type your movement speed from Bee Swarm: the stats menu (your bee icon → Stats) shows \"Movement Speed\". Use the number without Haste. The macro walks by distance, so a wrong number ends short or long (wrong field).");
                 android.widget.EditText ms = new android.widget.EditText(a);
                 ms.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
@@ -161,14 +157,14 @@ final class SetupWizard {
                 col.addView(ms);
                 check = () -> p.moveSpeedTyped ? null : "Type your movement speed (a number between 10 and 100)";
                 break;
-            case 6:
+            case 5:
                 text(col, "Which sprinkler do you have, and in which hotbar slot (the number key) is it? \"None\" if you don't have one.");
                 Button st = a.button("Sprinkler: " + p.sprinklerType, 0, null);
                 st.setOnClickListener(v -> { int k = java.util.Arrays.asList(Profile.SPRINKLERS).indexOf(p.sprinklerType); p.sprinklerType = Profile.SPRINKLERS[(k + 1) % Profile.SPRINKLERS.length]; App.save(a); st.setText("Sprinkler: " + p.sprinklerType); });
                 col.addView(st, new LinearLayout.LayoutParams(-1, a.dp(52)));
                 col.addView(a.stepper("Sprinkler hotbar slot (key)", () -> "" + p.sprinklerSlot, d -> p.sprinklerSlot = MainActivity.clamp(p.sprinklerSlot + d, 1, 7)));
                 break;
-            case 7: {
+            case 6: {
                 int sw = ScreenWidth.current(a);
                 boolean tab = ScreenWidth.tablet(a);
                 text(col, "In Roblox (in the game: menu → Settings):\n• Camera Mode → Classic\n• Shift Lock Switch → On\n\n"
@@ -190,7 +186,7 @@ final class SetupWizard {
                         : ScreenWidth.off(a) ? "Smallest width is " + ScreenWidth.current(a) + " dp: " + ScreenWidth.target(a) + " (Tab S9 FE) is recommended (tap Set it for me)" : null;
                 break;
             }
-            case 8: {
+            case 7: {
                 text(col, "Both are optional: Next skips them. You can add them later in Settings.");
                 LinearLayout w = a.card("Discord webhook"); a.webhookEditor(w);
                 LinearLayout s = a.card("Private server link"); a.serverLinkEditor(s);

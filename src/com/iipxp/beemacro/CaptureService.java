@@ -40,6 +40,14 @@ public class CaptureService extends Service {
         return START_NOT_STICKY;
     }
 
+    /** Screen reading is automatic now (no button): started when the app opens, when the key sender starts, and before a
+     *  run. Android may refuse a foreground-service start from the background; the next of those tries again. */
+    public static void ensure(android.content.Context c) {
+        if (inst != null) return;
+        try { c.startForegroundService(new Intent(c, CaptureService.class)); }
+        catch (Exception e) { Log.add("capture: screen reading couldn't start from here (" + e.getClass().getSimpleName() + "), it starts when you open Silly Macro"); }
+    }
+
     /** Stops screen reading: pauses the macro (onDestroy) and removes the notification. */
     public static void stopCapture(android.content.Context c) {
         Log.add("capture: stopped by user");

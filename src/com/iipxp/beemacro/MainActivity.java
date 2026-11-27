@@ -319,7 +319,7 @@ public class MainActivity extends Activity {
         LinearLayout buffs = card("Active buffs");
         HorizontalScrollView hs = new HorizontalScrollView(this); hs.setHorizontalScrollBarEnabled(false);
         buffChips = row(); hs.addView(buffChips); buffs.addView(hs);
-        buffs.addView(tv("Read from the buff row while screen capture runs.", 11, DIM));
+        buffs.addView(tv("Read from the buff row while screen reading runs.", 11, DIM));
         pair(status, buffs);
 
         LinearLayout dec = card("AI decision");
@@ -343,16 +343,15 @@ public class MainActivity extends Activity {
         c.addView(button(shizukuInstalled() ? "2 · Start the keyboard + mouse (Shizuku must be running)" : "2 · Get Shizuku (it runs the keyboard + mouse)", PURPLE, v -> {
             if (!shizukuInstalled()) { getShizuku(); return; }
             Toast.makeText(this, "Starting the keyboard + mouse…", Toast.LENGTH_SHORT).show();
-            new Thread(() -> { String m = ShizukuKeys.start(this); Log.add("shizuku: " + m); runOnUiThread(() -> Toast.makeText(this, m, Toast.LENGTH_LONG).show()); }).start();
+            new Thread(() -> { String m = ShizukuKeys.start(this); Log.add("shizuku: " + m); runOnUiThread(() -> { Toast.makeText(this, m, Toast.LENGTH_LONG).show(); CaptureService.ensure(this); }); }).start();
         }));
-        c.addView(button("3 · Allow screen capture (pick \"Entire screen\")", PURPLE, v -> requestCapture()));
-        c.addView(button("4 · Pick your hive slot (Hive tab)", PURPLE, v -> show("hive", true)));
-        c.addView(button("5 · Open Bee Swarm (your private server)", BLUE, v -> {
+        c.addView(button("3 · Pick your hive slot (Hive tab)", PURPLE, v -> show("hive", true)));
+        c.addView(button("4 · Open Bee Swarm (your private server)", BLUE, v -> {
             showPanel();   // the panel's ✕ hid it for good before (Discord: "panel isn't popping up")
             try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(p.joinLink())).setPackage("com.roblox.client")); }
             catch (Exception e) { toast("Roblox not installed"); }
         }));
-        c.addView(tv("6 · In the game, hold your phone sideways and press ▶ Start on the floating panel. The app reads your screen by itself.", 12, DIM));
+        c.addView(tv("5 · In the game, hold your phone sideways and press ▶ Start on the floating panel. The app reads your screen by itself (through the key sender, nothing is recorded).", 12, DIM));
     }
     GradientDrawable heroBg() {
         return Ui.glass(this, 24, true);
@@ -727,13 +726,13 @@ public class MainActivity extends Activity {
             if (!Webhook.valid(p.webhookUrl)) { toast("Save a webhook URL first"); return; }
             Webhook.send(this, "test", "👋 Silly Macro test", "Webhook works. " + Routes.name(p.field) + " · " + p.pattern
                     + (Monitor.honey > 0 ? "\nHoney: " + Stats.big(Monitor.honey) : ""), Webhook.PURPLE, true);
-            toast("Sending… (screenshot included if screen capture is on)");
+            toast("Sending… (screenshot included if screen reading is on)");
         }), new LinearLayout.LayoutParams(0, dp(48), 1));
         into.addView(ub);
         into.addView(whState);
     }
 
-    /** Screen reading (Home step 3 and the setup wizard). No MediaProjection consent: frames come from the key sender
+    /** Screen reading (no button any more: it starts by itself, see CaptureService.ensure). Frames come from the key sender
      *  (FrameServer, shell user via Shizuku), which this starts if it isn't running. */
     void requestCapture() {
             if (CaptureService.inst == null) {
@@ -789,7 +788,7 @@ public class MainActivity extends Activity {
         }));
         swc.addView(tv("Changes the whole " + (tabW ? "tablet" : "phone") + "'s resolution until you switch it off (the screen may look a little sharper or softer). Turn it off before uninstalling Silly Macro, or reset it in Developer options.", 11, DIM));
         LinearLayout su = card("Setup");
-        su.addView(tv("Walks you through Shizuku, Accessibility, screen capture, hive slot, move speed, sprinkler, Roblox settings, webhook and private server again.", 12, DIM));
+        su.addView(tv("Walks you through Shizuku, Accessibility, hive slot, move speed, sprinkler, Roblox settings, webhook and private server again.", 12, DIM));
         su.addView(button("Run setup again", PURPLE, v -> {
             Engine e = Engine.inst; if (e != null && !e.finished()) { toast("Stop the macro first"); return; }
             p.setupDone = false; p.setupStep = 0; App.save(this); recreate();
@@ -852,11 +851,7 @@ public class MainActivity extends Activity {
         if (!shizukuInstalled()) k.addView(button("Get Shizuku (for the key sender without a PC)", 0, v -> getShizuku()));
         k.addView(button("Start key sender on this device (Shizuku, no PC)", PURPLE, v -> {
             Toast.makeText(this, "Starting key sender…", Toast.LENGTH_SHORT).show();
-            new Thread(() -> { String m = ShizukuKeys.start(this); Log.add("shizuku: " + m); runOnUiThread(() -> Toast.makeText(this, m, Toast.LENGTH_LONG).show()); }).start();
-        }));
-        k.addView(button("Stop screen capture", 0, v -> {
-            if (CaptureService.inst == null) { toast("Screen capture is not running"); return; }
-            CaptureService.stopCapture(this); toast("Screen capture stopped");
+            new Thread(() -> { String m = ShizukuKeys.start(this); Log.add("shizuku: " + m); runOnUiThread(() -> { Toast.makeText(this, m, Toast.LENGTH_LONG).show(); CaptureService.ensure(this); }); }).start();
         }));
         LinearLayout dbg = card("Debug");
         dbg.addView(toggle("Debug mode (show the log below)", p.debug, on -> { p.debug = on; log.setVisibility(on ? View.VISIBLE : View.GONE); }));
@@ -886,7 +881,7 @@ public class MainActivity extends Activity {
             long age = (android.os.SystemClock.uptimeMillis() - Monitor.hudShotTime) / 1000;
             box.addView(tv("1. This screenshot of the Honey/Pollen counters (" + jpeg.length / 1024 + " KB, from " + (age < 60 ? age + " s" : age / 60 + " min") + " ago)"
                     + (Monitor.hudShotGame ? "" : "\n⚠ Taken before the app recognised Bee Swarm: it may not show the counters. For a better one, use Send report on the floating panel while in the game."), 12, Monitor.hudShotGame ? DIM : Ui.GOLD));
-        } else box.addView(tv("1. No counter screenshot (screen capture hasn't seen the game yet: allow it in Home step 3, open Bee Swarm sideways for a few seconds, then come back)", 12, Ui.GOLD));
+        } else box.addView(tv("1. No counter screenshot (screen reading hasn't seen the game yet: start the key sender (Home step 2), open Bee Swarm sideways for a few seconds, then come back)", 12, Ui.GOLD));
         box.addView(tv("2. Your debug log, " + Report.lines(log) + " lines (emails hidden)", 12, DIM));
         final byte[] img = jpeg;
         new android.app.AlertDialog.Builder(this).setTitle("Send report to the developer?").setView(box)
@@ -934,7 +929,7 @@ public class MainActivity extends Activity {
     @Override protected void onStop() { super.onStop(); if (!isChangingConfigurations()) Music.appHidden(this); }
     @Override protected void onSaveInstanceState(Bundle out) { super.onSaveInstanceState(out); out.putString("tab", currentKey); }
     @Override protected void onDestroy() { h.removeCallbacks(tick); if (musicListener != null) Music.get(this).unlisten(musicListener); super.onDestroy(); }
-    @Override protected void onResume() { super.onResume(); if (content == null) return; drawReview(); drawCatalog(""); }
+    @Override protected void onResume() { super.onResume(); CaptureService.ensure(this); if (content == null) return; drawReview(); drawCatalog(""); }
 
     @Override protected void onActivityResult(int req, int code, Intent data) {
         if (req == REQ_AUDIO) { if (code == RESULT_OK && data != null) importAudio(data); return; }

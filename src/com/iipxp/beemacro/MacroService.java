@@ -645,13 +645,6 @@ public class MacroService extends AccessibilityService {
 
         expandedBox = new LinearLayout(this); expandedBox.setOrientation(LinearLayout.VERTICAL);
         details = text("", 11, 0xFF9A9BA3);   // added below the buttons: a long buff list must not push them off screen
-        Button capOff = small("Stop screen capture", NEUTRAL);
-        capOff.setOnClickListener(v -> {
-            if (Engine.inst != null && !Engine.inst.finished()) Engine.inst.stop("screen capture stopped");
-            emergencyRelease();
-            if (CaptureService.inst != null) { CaptureService.stopCapture(this); toast("Screen capture stopped"); } else toast("Screen capture is not running");
-        });
-        expandedBox.addView(capOff);
         // background music, same player as the app's Music tab (one instance)
         LinearLayout mus = row();
         Button mPlay = small("♪ Music", NEUTRAL), mNext = small("⏭", NEUTRAL);
@@ -684,7 +677,6 @@ public class MacroService extends AccessibilityService {
             boolean open = calBox.getVisibility() != View.VISIBLE;   // keypad replaces the details so the panel fits on screen
             calBox.setVisibility(open ? View.VISIBLE : View.GONE);
             details.setVisibility(open ? View.GONE : View.VISIBLE);
-            capOff.setVisibility(open ? View.GONE : View.VISIBLE);
         });
         expandedBox.addView(calT);
         calBox = new LinearLayout(this); calBox.setOrientation(LinearLayout.VERTICAL); calBox.setVisibility(View.GONE);
@@ -879,7 +871,7 @@ public class MacroService extends AccessibilityService {
                 if (jpg != null) { reportImg.setImageBitmap(bm); reportImg.setVisibility(View.VISIBLE); }
                 reportInfo.setText("Only these 2 things are sent (with your account id, app version, phone model):\n"
                         + (jpg != null ? "1. this screenshot of the counters, " + jpg.length / 1024 + " KB" + (game ? "" : " (⚠ Bee Swarm not recognised on screen)")
-                                       : "1. no screenshot (" + (px == null ? "screen capture is off: Home step 3" : "hold the device sideways") + ")")
+                                       : "1. no screenshot (" + (px == null ? "screen reading is off: start the key sender, Home step 2" : "hold the device sideways") + ")")
                         + "\n2. your debug log, " + Report.lines(log) + " lines (emails hidden)");
                 reportSend.setEnabled(true);
             });
@@ -903,7 +895,7 @@ public class MacroService extends AccessibilityService {
         Engine e = Engine.inst;
         if (e != null && !e.finished()) { say("Stop the macro first, then test the keys"); return; }
         Vision.Result r0 = Monitor.last;
-        if (CaptureService.inst == null || r0 == null) { say("Key test: turn on screen capture first (Home step 3)"); return; }
+        if (CaptureService.inst == null || r0 == null) { say("Key test: screen reading isn't running yet (start the key sender, Home step 2)"); return; }
         if (r0.screen == Vision.Screen.MENU) { say("Key test: close the Roblox menu first, then test again"); return; }
         if (!Keys.connect(this) || !Keys.ping()) { say("Key test ✗: the key sender isn't running. Start Shizuku, then Silly Macro Home → step 2"); return; }
         String emu = Keys.emulatorState();

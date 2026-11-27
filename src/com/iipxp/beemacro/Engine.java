@@ -50,7 +50,11 @@ final class Engine implements Runnable {
 
     static String preflight(MacroService s) {
         Profile p = App.profile(s);
-        if (CaptureService.inst == null) return "Screen reading is off — open Silly Macro and turn on screen reading (Home step 3).";
+        if (CaptureService.inst == null) {   // automatic now: start it here, give it a moment
+            CaptureService.ensure(s);
+            for (int i = 0; i < 30 && CaptureService.inst == null; i++) SystemClock.sleep(100);
+            if (CaptureService.inst == null) return "Screen reading isn't running yet — open the Silly Macro app once (it starts there), then press Start.";
+        }
         if (!Profile.NAME.equals("PINE_TREE_MASTER_PROFILE")) return "Wrong profile loaded.";
         if (!p.hiveConfirmed) return "Confirm your hive slot once in the Silly Macro app.";
         if (Moves.skillet(Profile.DW_FDC, Profile.HW_FDC, Profile.CR_FDC, Profile.DW_ALIGN, Profile.HW_ALIGN).size() < 50
