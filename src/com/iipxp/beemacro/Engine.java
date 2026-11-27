@@ -1513,11 +1513,13 @@ final class Engine implements Runnable {
                 in.tap(T().peopleX, T().peopleY); sleep(700);
             }
             boolean dlg = false;
-            if (!p.respawnByClick) {   // learned per device: R is no shortcut in Roblox's newer menu (cost ~1.2 s every respawn)
+            if (!p.respawnByClick) {   // learned per device: R is no shortcut in Roblox's newer menu (cost ~1.5 s every respawn)
                 in.key(Keys.R, 60);
-                dlg = waitFor(r -> r.screen == Vision.Screen.RESPAWN_DIALOG, 1200) != null || dialogUp();
+                // 2 s, not 1.2: a slow frame after R must not teach "R doesn't work" on a device where it does (the Tab S9 FE
+                // learned it wrongly, then clicked an empty spot in its menu on every respawn, 2026-11-27 13:13)
+                dlg = waitFor(r -> r.screen == Vision.Screen.RESPAWN_DIALOG, 2000) != null || dialogUp();
                 if (!dlg) { p.respawnByClick = true; App.save(in); Log.add("respawn: R isn't a Respawn shortcut in this menu - clicking Respawn directly from now on"); }
-            }
+            } else Log.add("respawn: clicking Respawn directly (learned on this device)");
             if (!dlg) {   // R is no shortcut in Roblox's newer menu: click its Respawn button
                 float[] b = blueTap(true);
                 // The "usual spot" is only safe on the menu we measured (Leave | Respawn | Resume with the blue Resume
@@ -1536,6 +1538,13 @@ final class Engine implements Runnable {
                 in.tap(b != null ? b[0] : T().respawnX, b != null ? b[1] : T().respawnY);
                 long t0 = SystemClock.uptimeMillis();
                 while (!(dlg = dialogUp()) && SystemClock.uptimeMillis() - t0 < 3000) sleep(200);
+                if (!dlg && p.respawnByClick) {
+                    // the learned click did nothing here: forget it and try R right away, the menu is still open
+                    p.respawnByClick = false; App.save(in);
+                    Log.add("respawn: clicking Respawn opened nothing - trying R (and using R from now on)");
+                    in.key(Keys.R, 60);
+                    dlg = waitFor(r -> r.screen == Vision.Screen.RESPAWN_DIALOG, 2000) != null || dialogUp();
+                }
             }
             if (!dlg) { in.key(Keys.ESC, 60); sleep(800); return false; }
         }
@@ -1549,6 +1558,10 @@ final class Engine implements Runnable {
             float[] b = blueTap(false);
             Log.add("respawn: Enter didn't confirm, clicking the dialog's Respawn" + (b != null ? " (found)" : " (usual spot)"));
             in.tap(b != null ? b[0] : T().confirmX, b != null ? b[1] : T().confirmY);
+            if (p.confirmByClick) {   // the learned click must work too, or Enter comes back
+                sleep(1200);
+                if (dialogUp()) { p.confirmByClick = false; App.save(in); Log.add("respawn: clicking the dialog's Respawn did nothing - pressing Enter (and from now on)"); in.key(Keys.ENTER, 60); sleep(900); }
+            }
         }
         if (waitFor(this::sure, 8000) == null) return false;
         sleep(2500);
