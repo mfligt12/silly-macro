@@ -241,7 +241,13 @@ final class Monitor {
                     if (now - lastFpsLog > 30_000) { lastFpsLog = now; Log.add(String.format(Locale.US, "vision: %.1f fps, last frame %d ms, %s, %d tracks", fps, lastFrameMs, state, tracker.snapshot().size())); }
                 }
                 boolean busy = Engine.inst != null && !Engine.inst.finished();
-                long period = busy ? 1000 / Math.max(1, p.detectFps) : p.batterySaver ? 1000 : 300;
+                // Walking a pattern with token collection off needs no 8 fps: bag, field and motion checks are fine at 4.
+                // Routes, the hive prompt and the corner line-up ("Lining up…" is not "Farming") keep the full rate.
+                // Halves the frames sent and analysed for most of a run (heat, battery).
+                Engine eng = Engine.inst;
+                boolean patterning = busy && !p.collectTokens && eng != null && eng.phase.startsWith("Farming");
+                int fps = patterning ? Math.min(p.detectFps, 4) : p.detectFps;
+                long period = busy ? 1000 / Math.max(1, fps) : p.batterySaver ? 1000 : 300;
                 SystemClock.sleep(Math.max(10, period - (now - t0)));
             }
         }, "vision");

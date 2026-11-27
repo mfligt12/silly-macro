@@ -225,6 +225,13 @@ public final class Profile {
     /** Never pause by itself (keyboard mode): its own pauses become retry / reset / rejoin, like overnight. Your Pause
      *  button, the low-battery stop and setup questions at Start still pause. */
     public boolean noAutoPause = true;
+    // Farming efficiency (recorded on an S23, Pepper): the corner line-up took ~5 s of every 10 s loop, and a big bag
+    // never reached the threshold, so every trip ended on the 10-min timer and paid ~80 s of travel for a few %.
+    public int cornerEvery = 4;               // corner mode: line up on loop 1, then every N loops (or when pollen stalls)
+    public boolean fieldExtend = true;        // at the field time limit, stay while the bag is under half full...
+    public int fieldMaxMinutes = 30;          // ...up to this long per trip
+    public boolean respawnByClick = false;    // learned: R isn't a Respawn shortcut in this Roblox menu, click it directly
+    public boolean confirmByClick = false;    // learned: Enter doesn't confirm the respawn dialog, click it directly
     public String aiPatterns = "Snake,e_lol,Squares,Lines";
     public float aiExplore = 0.15f;
 

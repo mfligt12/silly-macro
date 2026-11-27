@@ -478,12 +478,16 @@ final class Engine implements Runnable {
         return Monitor.bannerTime == since ? 0 : Monitor.bannerRows;
     }
     private boolean sprinklerPlaced, arrivalOk;
+    private int sprinklerLearnFails;
     private int arrivalFails;
     private void placeSprinkler(boolean walk, Moves.Key[] inward) {
         sprinkler = null; sprinklerPlaced = false;
         if (walk) walkToSprinklerSpot();   // also where the pattern starts, so it runs with "None" too
         if (p.sprinklerCount() == 0) { Log.add("sprinkler: none set, not placing"); return; }
-        boolean learn = p.sprinklerAnchor && p.keyboard();
+        // Learning the sprinkler's look walks 12 tiles and grabs 6 frames (~3-4 s per trip). Corner mode never uses it
+        // (it lines up on the walls, correctDrift is skipped), and after 3 failed tries in a run it isn't worth retrying.
+        boolean learn = p.sprinklerAnchor && p.keyboard() && corner == null && sprinklerLearnFails < 3;
+        if (p.sprinklerAnchor && p.keyboard() && sprinklerLearnFails == 3) { sprinklerLearnFails++; Log.add("sprinkler: couldn't learn its look 3 times this run, not trying again until the next run"); }
         int[] before = null;
         if (learn) { in.hold(MacroService.set(new Moves.Key[]{Moves.Key.S}), Moves.tileMs(3, p.moveSpeed)); sleep(500); before = frames3(); in.hold(MacroService.set(new Moves.Key[]{Moves.Key.W}), Moves.tileMs(3, p.moveSpeed)); }
         if (!pressSprinkler(inward) || !learn) return;
@@ -503,6 +507,7 @@ final class Engine implements Runnable {
                 sprinkler = null;
             }
             saveGuardFrame("sprinkler");
+            sprinklerLearnFails = sprinkler == null ? sprinklerLearnFails + 1 : 0;
             Log.add(sprinkler == null ? "sprinkler: couldn't learn its look (no single new object ahead) - no sprinkler anchor this trip"
                     : "sprinkler: learned (" + sprinkler.learnedW + "×" + sprinkler.learnedH + " px at " + sprinkler.learnedX + "," + sprinkler.learnedY + ")");
         } else Log.add("sprinkler: no frames to learn from");
@@ -726,6 +731,23 @@ final class Engine implements Runnable {
         }
         if (bestTurn != 0) { in.rotate(bestTurn > 4 ? bestTurn - 8 : bestTurn); sleep(450); }
         Log.add(String.format(Locale.US, "camera: hive row %.2f after %d turns, zooming in by eye", topRow, bestTurn));
+        // Fast path: we own a hive (respawns land on its pad) and this device's pad zoom is known: go straight to it
+        // instead of searching every zoom step again (the search took ~25 s of every trip, recorded on the S23)
+        if (ownsHive && p.padZoomStep > 0) {
+            for (int k = 0; k < p.padZoomStep; k++) { in.key(android.view.KeyEvent.KEYCODE_I, 60); sleep(250); }
+            sleep(400);
+            double q = readFacing();
+            if (q < FACING_PAD) { sleep(300); q = Math.max(q, readFacing()); }
+            if (q >= FACING_PAD) {
+                zoomStep = p.padZoomStep;
+                Log.add(String.format(Locale.US, "camera: at our hive pad, learned zoom step %d (view %.2f), no search needed", zoomStep, q));
+                decideFacing(q, bestTurn);
+                return;
+            }
+            Log.add(String.format(Locale.US, "camera: learned pad zoom step %d only gave view %.2f, searching", p.padZoomStep, q));
+            for (int i = 0; i < 20; i++) { in.key(android.view.KeyEvent.KEYCODE_O, 60); SystemClock.sleep(70); }
+            sleep(900);
+        }
         double f = zoomToHive();
         if (f < FACING_SPAWN && zoomPeak >= FACING_PAD) {
             // the view after stepping back to the best zoom read nothing (S23 live: best 0.67, "now 0.00") and the whole
@@ -1134,7 +1156,7 @@ final class Engine implements Runnable {
      *  tiles, i.e. the wrong field, so leave only once Haste (20 s max) has worn off. */
     private void waitHasteClear() {
         long t0 = SystemClock.uptimeMillis(); int same = 0, stacks = -2; long seen = 0;
-        while (SystemClock.uptimeMillis() - t0 < 25_000) {
+        while (SystemClock.uptimeMillis() - t0 < 6_000) {   // was 25 s: walks are distance-corrected for Haste now
             Vision.Result r = waitFor(this::sure, 2000);
             if (r == null || !r.haste) { if (SystemClock.uptimeMillis() - t0 > 500) Log.add("haste: cleared after " + (SystemClock.uptimeMillis() - t0) / 1000 + " s, starting the walk"); return; }
             // Walks are Haste-corrected by distance now: only an unreadable or flickering stack count is worth waiting
@@ -1143,17 +1165,17 @@ final class Engine implements Runnable {
                 seen = Monitor.lastTime;
                 if (r.hasteStacks > 0 && r.hasteStacks == stacks) same++; else { same = r.hasteStacks > 0 ? 1 : 0; stacks = r.hasteStacks; }
             }
-            if (same >= 4) {
+            if (same >= 2) {
                 liveSpeed = Math.round(speedFactor(r, 1 + 0.1 * Math.min(10, stacks)) * 1000) / 1000.0; hasteMul = 1 + 0.1 * Math.min(10, stacks);
                 Log.add(String.format(Locale.US, "haste: x%d read steadily, walking now at x%.2f (distance-corrected) instead of waiting", stacks, liveSpeed));
                 return;
             }
             decide("Waiting for Haste", "Haste is active; the route distances assume base speed, so walking now could overshoot.",
-                    "buff row: Haste" + (r.hasteStacks > 0 ? " x" + r.hasteStacks : ""), "leave when Haste ends (≤20 s)", r.hasteConf);
+                    "buff row: Haste" + (r.hasteStacks > 0 ? " x" + r.hasteStacks : ""), "read the Haste stacks (≤6 s), then walk at that speed", r.hasteConf);
             step = "Waiting for Haste to end before the walk (" + (SystemClock.uptimeMillis() - t0) / 1000 + " s)";
             sleep(500);
         }
-        Log.add("haste: still on after 25 s, walking with live-speed correction");
+        Log.add("haste: still on after 6 s, walking with live-speed correction");
     }
 
     /** A recorded D-pad press, replayed by DISTANCE: s.count ms at the recorded speed s.tiles = count*tiles ms of
@@ -1427,8 +1449,12 @@ final class Engine implements Runnable {
                 Log.add("respawn: menu opened on another tab, going to People");
                 in.tap(T().peopleX, T().peopleY); sleep(700);
             }
-            in.key(Keys.R, 60);
-            boolean dlg = waitFor(r -> r.screen == Vision.Screen.RESPAWN_DIALOG, 1200) != null || dialogUp();
+            boolean dlg = false;
+            if (!p.respawnByClick) {   // learned per device: R is no shortcut in Roblox's newer menu (cost ~1.2 s every respawn)
+                in.key(Keys.R, 60);
+                dlg = waitFor(r -> r.screen == Vision.Screen.RESPAWN_DIALOG, 1200) != null || dialogUp();
+                if (!dlg) { p.respawnByClick = true; App.save(in); Log.add("respawn: R isn't a Respawn shortcut in this menu - clicking Respawn directly from now on"); }
+            }
             if (!dlg) {   // R is no shortcut in Roblox's newer menu: click its Respawn button
                 float[] b = blueTap(true);
                 // The "usual spot" is only safe on the menu we measured (Leave | Respawn | Resume with the blue Resume
@@ -1436,6 +1462,7 @@ final class Engine implements Runnable {
                 // the Leave dialog looks like the respawn one, so Enter then left the game (Discord: "it leaves the game").
                 Vision.Result mm = Monitor.last;
                 if (b == null && !(mm != null && mm.screen == Vision.Screen.MENU && mm.menuPeople)) {
+                    if (p.respawnByClick) { p.respawnByClick = false; App.save(in); }   // this menu may take R after all: try it next time
                     Log.add("respawn: R gave no dialog and Respawn wasn't found on this menu - not clicking blind (could be Leave)");
                     int[] sp = Monitor.shotPx;   // for the next report: what sits where Resume's blue should be
                     if (sp != null) { int c = Vision.at(sp, Monitor.shotW, Monitor.shotH, 1540 / 2340.0, 450 / 1080.0, 0, 0), c2 = Vision.at(sp, Monitor.shotW, Monitor.shotH, 0.5, 450 / 1080.0, 0, 0);
@@ -1450,8 +1477,11 @@ final class Engine implements Runnable {
             if (!dlg) { in.key(Keys.ESC, 60); sleep(800); return false; }
         }
         sleep(300);
-        in.key(Keys.ENTER, 60);
-        sleep(900);
+        if (!p.confirmByClick) {   // learned per device: Enter doesn't confirm this dialog (cost ~0.9 s every respawn)
+            in.key(Keys.ENTER, 60);
+            sleep(900);
+            if (dialogUp()) { p.confirmByClick = true; App.save(in); Log.add("respawn: Enter doesn't confirm here - clicking the dialog's Respawn directly from now on"); }
+        }
         if (dialogUp()) {   // Enter didn't confirm: click the dialog's blue Respawn
             float[] b = blueTap(false);
             Log.add("respawn: Enter didn't confirm, clicking the dialog's Respawn" + (b != null ? " (found)" : " (usual spot)"));
@@ -1974,8 +2004,15 @@ final class Engine implements Runnable {
         long t0 = SystemClock.uptimeMillis();
         if (Monitor.honey > 0) stats.honey(Monitor.honey);
         lastRise = t0; outsideSince = 0; farmStart = t0; lastPct = -1; patYaw = 0; haveLastIn = false; Monitor.fieldTrack.clear(); wrongSince = 0; wrongSeen = 0;
+        boolean extendNoted = false; int alignedOuts = fieldOuts;
         for (int loop = 1; ; loop++) {
-            if (corner != null) cornerAlign(loop == 1);
+            // Corner mode: line up on loop 1, then every cornerEvery loops, or sooner when pollen stopped rising for 15 s
+            // or we left the field since the last line-up. Every loop cost ~5 s of a 10 s loop (recorded, Pepper XS).
+            if (corner != null) {
+                boolean due = loop == 1 || (loop - 1) % Math.max(1, p.cornerEvery) == 0
+                        || SystemClock.uptimeMillis() - lastRise > 15_000 || fieldOuts != alignedOuts;
+                if (due) { cornerAlign(loop == 1); alignedOuts = fieldOuts; }
+            }
             // Drift by sight only where the pattern really closes: Skillet and corner mode line up on the hedges every
             // loop, so they end where the walls put them, not where they began (live: the anchor fought Skillet, 30%→44%)
             if (loop == 1 && corner == null) { if (!sprinklerPlaced) Log.add("farm: no sprinkler placed this trip"); if (aiTokens) Log.add("anchor: off for AI Tokens - every token walk is walked back"); else if (!wallBound()) setAnchor(); else Log.add("anchor: off here - the hedges line this pattern up every loop"); }
@@ -2019,7 +2056,21 @@ final class Engine implements Runnable {
                 else if (r == null || r.pollen - startPct < 0.2) throw new Recover("pollen did not rise during two pattern loops — not in a field");
                 if (r != null) nav = String.format(Locale.US, "Pine Tree Forest (pollen %.1f%% → %.1f%%)", startPct, r.pollen);
             }
-            if (SystemClock.uptimeMillis() - t0 > p.fieldMinutes * 60_000L) { Log.add("farm: field time limit " + p.fieldMinutes + " min"); return; }
+            long inField = SystemClock.uptimeMillis() - t0;
+            if (inField > p.fieldMinutes * 60_000L) {
+                // A big bag never reaches the threshold in fieldMinutes: every trip then ended on the timer and paid ~80 s
+                // of travel for a few % (recorded: 115M bag, +26k/s). Stay while the bag is under half full, up to
+                // fieldMaxMinutes; the timer still ends the trip after that, and a full bag always does.
+                Vision.Result rb = Monitor.last;
+                double bag = rb != null && bagKnown(rb) ? rb.pollen : -1;
+                if (p.fieldExtend && bag >= 0 && bag < 50 && inField < p.fieldMaxMinutes * 60_000L) {
+                    if (!extendNoted) {
+                        extendNoted = true;
+                        Log.add(String.format(Locale.US, "farm: bag only %.0f%% after %d min, staying (up to %d min): the trip home costs more than it brings", bag, p.fieldMinutes, p.fieldMaxMinutes));
+                        decide("Farming", "Bag far from full at the field time limit: farming on instead of walking home for a few %.", String.format(Locale.US, "bag %.0f%%", bag), "convert at " + p.backpackThreshold + "% or after " + p.fieldMaxMinutes + " min", 0.9);
+                    }
+                } else { Log.add("farm: field time limit " + (extendNoted ? p.fieldMaxMinutes : p.fieldMinutes) + " min"); return; }
+            }
             if (mondoDue()) { Log.add("farm: Mondo Chick time, heading home early"); return; }
         }
     }
