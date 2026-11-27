@@ -219,6 +219,12 @@ public final class Profile {
     public boolean overlayExpanded = false, overlayVisible = true, overlayMinimized = false;
     public boolean batterySaver = true, debug = false, stats = true;
 
+    // AI (AiBrain / AiPower). Pattern learning: before each trip pick from this shortlist of Natro patterns, score it by
+    // bag % per minute, remember it across runs. Heat guard: slow vision when warm, cool down at the hive when hot.
+    public boolean aiPatternLearn = false, aiThermal = true;
+    public String aiPatterns = "Snake,e_lol,Squares,Lines";
+    public float aiExplore = 0.15f, aiThrottleC = 41f, aiPauseC = 45f, aiResumeC = 39f;
+
     public static File file(File dir) { return new File(dir, NAME + ".properties"); }
 
     public static Profile load(File dir) {

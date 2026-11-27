@@ -50,13 +50,13 @@ final class Engine implements Runnable {
 
     static String preflight(MacroService s) {
         Profile p = App.profile(s);
-        if (CaptureService.inst == null) return "Screen capture is off — open Silly Macro and tap 'Allow screen capture'.";
+        if (CaptureService.inst == null) return "Screen reading is off — open Silly Macro and turn on screen reading (Home step 3).";
         if (!Profile.NAME.equals("PINE_TREE_MASTER_PROFILE")) return "Wrong profile loaded.";
         if (!p.hiveConfirmed) return "Confirm your hive slot once in the Silly Macro app.";
         if (Moves.skillet(Profile.DW_FDC, Profile.HW_FDC, Profile.CR_FDC, Profile.DW_ALIGN, Profile.HW_ALIGN).size() < 50
                 || Moves.recorded("TO_FIELD").length == 0 || Moves.recorded("TO_HIVE").length == 0) return "Pattern/route data missing.";
         Vision.Result r = Monitor.fresh(SystemClock.uptimeMillis() - 1, 3000);
-        if (r == null) return "No screen frames yet — is capture running?";
+        if (r == null) return "No screen frames yet — the key sender provides them: Home → step 2 (start it with Shizuku), then try again. (" + ShellFrames.status + ")";
         if (r.screen == Vision.Screen.UNKNOWN && !p.noHudForced) {   // don't send people to a button: re-measure and wait for the HUD (up to 20 s)
             MacroService.startWhy = "Reading this screen's Bee Swarm HUD…"; MacroService.startWhyAt = SystemClock.uptimeMillis();
             Monitor.hurry();
@@ -70,10 +70,8 @@ final class Engine implements Runnable {
         Vision.Mode mode = Vision.startMode(p.noHudForced, r, p.minConfidence, z.x > z.y);
         if (mode == Vision.Mode.BLOCKED) {
             if (z.y > z.x) return "Turn the device sideways: Bee Swarm must be in landscape.";
-            if (r.screen == Vision.Screen.DARK && CaptureService.contentHidden)
-                return "Screen capture is sharing a single app, not the whole screen, so it sees black. Settings → stop screen capture, then Home → 2 · Allow screen capture and pick \"Entire screen\".";
             if (r.screen == Vision.Screen.DARK)
-                return "Screen capture only sees a black screen. Settings → stop screen capture, then Home → 2 · Allow screen capture and pick \"Entire screen\" (not \"A single app\").";
+                return "Screen reading only sees a black screen. Open Bee Swarm, or restart the key sender (Home → step 2) and try again.";
             return "The Roblox menu is open: close it, then press Start.";
         }
         // The counter reader is optional: a screen it can't read starts in no-HUD mode instead of refusing to start
@@ -215,6 +213,7 @@ final class Engine implements Runnable {
         stats.fieldExits = fieldOuts;
         Stats.saveCurrent(in, stats);
         afterTripRest();
+        aiCoolDown();
     }
     /** The timed Discord report (Settings → Discord → Send it every N min), like Natro's hourly one. Checked after
      *  every trip and every farming step, so a short interval isn't held back by a long trip. */
@@ -1633,25 +1632,70 @@ final class Engine implements Runnable {
     /** The chosen farming pattern: Skillet, or a Natro Macro pattern read from assets/patterns (falls back to Skillet). */
     private boolean natroPattern;   // the last farmPattern() is a Natro pattern (not Skillet or the Skillet fallback)
     /** The pattern really running, for the panel (it said "Skillet" during every pattern: Discord "using CornerXSnake but it still uses Skillet"). */
-    private String patName() { return aiTokens ? Patterns.AI : natroPattern ? p.pattern : "Skillet"; }
+    private String patName() { return aiTokens ? Patterns.AI : natroPattern ? pat() : "Skillet"; }
+    /** The pattern this trip: the AI's pick (AiBrain) when pattern learning is on, otherwise the one set in the app. */
+    private volatile String patOverride;
+    private String pat() { String o = patOverride; return o != null ? o : p.pattern; }
+
+    // ------------------------------------------------------------------ AI pattern learning (AiBrain)
+    private List<String> aiCandidates = new java.util.ArrayList<>();
+    private String aiPickPattern() {
+        patOverride = null;
+        if (!p.aiPatternLearn || (Profile.AI_GATHERING && p.pattern.equals(Patterns.AI))) return null;
+        List<String> avail = new java.util.ArrayList<>(); avail.add("Skillet");
+        try { for (String f : in.getAssets().list("patterns")) if (f.endsWith(".ahk")) avail.add(f.substring(0, f.length() - 4)); } catch (Exception ignored) { }
+        aiCandidates = AiBrain.shortlist(p.aiPatterns, avail);
+        AiBrain b = AiBrain.get(in.getFilesDir());
+        String pick = b.pickPattern(p.field, aiCandidates, p.aiExplore);
+        if (pick == null) { Log.add("ai: pattern learning is on but the shortlist has no known pattern (" + p.aiPatterns + ")"); return null; }
+        patOverride = pick;
+        decide("Farming", "AI picked " + pick + " for this trip: " + b.lastWhy + ".", "shortlist " + aiCandidates, "farm " + Routes.name(p.field) + " with " + pick, 0.8);
+        Log.add("ai: pattern " + pick + " for " + p.field + " (" + b.lastWhy + ")");
+        return pick;
+    }
+    private void aiScore(String pick, double startPct, long t0) {
+        Vision.Result r = Monitor.last;
+        double end = r != null && bagKnown(r) ? r.pollen : -1;
+        AiBrain b = AiBrain.get(in.getFilesDir());
+        float rw = b.reportTrip(p.field, pick, startPct, end, SystemClock.uptimeMillis() - t0);
+        if (Float.isNaN(rw)) Log.add("ai: trip not scored (bag unreadable, under a minute, or the bag % fell)");
+        else Log.add(String.format(Locale.US, "ai: %s scored %.2f%% bag/min on %s%s", pick, rw, p.field, b.summary(p.field, aiCandidates)));
+    }
+
+    /** Too hot (AiPower): wait where we are until the phone cools, at most 15 min, then carry on regardless. */
+    private void aiCoolDown() {
+        if (AiPower.level != AiPower.Level.HOT) return;
+        String ph = phase; phase = "Cooling down";
+        decide("Cooling down", "The phone is too hot: resting until it cools before the next trip.", AiPower.why, "carry on farming", 1);
+        Log.add("ai power: cooling down (" + AiPower.why + ")");
+        hook("problem", "🌡 Cooling down", AiPower.why, Webhook.GOLD, false);
+        in.emergencyRelease(); in.arm();
+        long end = SystemClock.uptimeMillis() + 15 * 60_000L;
+        while (AiSensors.update(in, p) == AiPower.Level.HOT && SystemClock.uptimeMillis() < end) {
+            sleep(15_000);
+            if (p.keyboard() && Keys.connect(in)) Keys.nudge();   // counts as input: no idle kick / screen lock while resting
+        }
+        Log.add("ai power: " + (AiPower.level == AiPower.Level.HOT ? "still hot after 15 min, carrying on" : "cooled down (" + AiPower.why + ")"));
+        phase = ph;
+    }
     /** "AI Tokens" pattern: token collection is always on, wider reach, several tokens per step (Patterns.AI). */
     private boolean aiTokens;
     private List<Moves.Step> farmPattern() {
-        natroPattern = false; aiTokens = Profile.AI_GATHERING && p.pattern.equals(Patterns.AI);
-        if (!p.pattern.equals("Skillet")) {
+        natroPattern = false; aiTokens = Profile.AI_GATHERING && pat().equals(Patterns.AI);
+        if (!pat().equals("Skillet")) {
             // AI Tokens: walk all over the field with that field's own Natro pattern (corner patterns become Snake:
             // no corner line-up), chasing tokens as they pop up
             String[] fd = Routes.DEFAULTS[Routes.index(p.field)];
-            String file = aiTokens ? (fd[0].startsWith("Corner") ? "Snake" : fd[0]) : p.pattern;
+            String file = aiTokens ? (fd[0].startsWith("Corner") ? "Snake" : fd[0]) : pat();
             try (java.io.InputStream is = in.getAssets().open("patterns/" + file + ".ahk")) {
                 String src = new String(readAll(is), java.nio.charset.StandardCharsets.UTF_8);
                 List<Moves.Step> st = Patterns.steps(src, Patterns.size(aiTokens ? fd[1] : p.patternSize), aiTokens ? Integer.parseInt(fd[2]) : p.patternWidth, false, p.patternInvertFB, p.patternInvertLR, p.moveSpeed);
                 if (aiTokens) { Log.add("farm: AI Tokens: " + file + " " + fd[1] + " over " + Routes.name(p.field) + " (" + st.size() + " steps), collecting tokens after every step"); nav = Routes.name(p.field) + " · " + Patterns.AI; natroPattern = true; return st; }
-                Log.add("farm: pattern " + p.pattern + " " + p.patternSize + " ×" + p.patternWidth + " (" + st.size() + " steps)");
-                nav = Routes.name(p.field) + " · " + p.pattern;
+                Log.add("farm: pattern " + pat() + " " + p.patternSize + " ×" + p.patternWidth + " (" + st.size() + " steps)");
+                nav = Routes.name(p.field) + " · " + pat();
                 natroPattern = true;
                 return st;
-            } catch (Exception e) { Log.add("farm: pattern " + p.pattern + " unreadable (" + e.getMessage() + "), using Skillet"); }
+            } catch (Exception e) { Log.add("farm: pattern " + pat() + " unreadable (" + e.getMessage() + "), using Skillet"); }
         }
         return Moves.skillet(Profile.DW_FDC, Profile.HW_FDC, Profile.CR_FDC, Profile.DW_ALIGN, Profile.HW_ALIGN);
     }
@@ -1671,6 +1715,13 @@ final class Engine implements Runnable {
     /** Farm walks are corrected for Haste (set per pattern in farm(), off for every other walk). */
     private boolean hasteFix;
     private void farm() {
+        String aiPick = aiPickPattern();
+        Vision.Result rs = Monitor.last;
+        double aiStart = rs != null && bagKnown(rs) ? rs.pollen : -1; long aiT0 = SystemClock.uptimeMillis();
+        try { farmTrip(); if (aiPick != null) aiScore(aiPick, aiStart, aiT0); }
+        finally { patOverride = null; }
+    }
+    private void farmTrip() {
         List<Moves.Step> sk = farmPattern();
         hasteFix = natroPattern ? p.hastePatterns : p.hasteAdjustSkillet;
         corner = natroPattern && !aiTokens && cornerPlanned() ? cornerPlan(sk) : null;
@@ -1686,8 +1737,8 @@ final class Engine implements Runnable {
     }
     /** Corner mode will be used this trip: corner sprinkler spot and a Natro pattern (Skillet lines up by itself). */
     private boolean cornerWanted() {
-        if (!cornerPlanned() || p.pattern.equals("Skillet")) return false;
-        try (java.io.InputStream is = in.getAssets().open("patterns/" + p.pattern + ".ahk")) { return true; } catch (Exception e) { return false; }
+        if (!cornerPlanned() || pat().equals("Skillet")) return false;
+        try (java.io.InputStream is = in.getAssets().open("patterns/" + pat() + ".ahk")) { return true; } catch (Exception e) { return false; }
     }
     /** The hedges keep us in: corner mode, or Skillet at a corner spot (it walks into them on purpose). No edge steering then. */
     private boolean wallBound() { return corner != null || (!natroPattern && cornerPlanned()); }
@@ -1858,6 +1909,12 @@ final class Engine implements Runnable {
                 guardBag(r);
                 rate(r);
                 checkLost();
+                if (AiPower.level == AiPower.Level.HOT) {   // AiPower: end the trip early; afterTrip() rests until it cools
+                    Log.add("ai power: too hot (" + AiPower.why + "), ending this trip early");
+                    in.emergencyRelease(); in.arm();
+                    if (i < sk.size() - 1) unwindCamera(sk, i);
+                    return;
+                }
                 if (s.type == 'W' && !(r != null && bagKnown(r) && r.pollen >= p.backpackThreshold)) {
                     if (aiTokens) { for (int k = 0; k < 4 && maybeCollect(); k++) { } }   // AI Tokens: token to token, up to 4 per step
                     else maybeCollect();

@@ -9,7 +9,6 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -643,6 +642,11 @@ public class MainActivity extends Activity {
         s.addView(toggle("Battery saver (1 fps vision while idle)", p.batterySaver, on -> p.batterySaver = on));
         s.addView(toggle("Keep Samsung's game touch lock away (harmless key when idle 45 s)", p.keepAlive, on -> p.keepAlive = on));
         s.addView(toggle("Show temperature (°C / °F) and battery under the overlay", p.showTemp, on -> p.showTemp = on));
+        LinearLayout ai = card("AI");
+        ai.addView(toggle("Heat guard: slower vision when warm, rest at " + Math.round(p.aiPauseC) + "°C until " + Math.round(p.aiResumeC) + "°C", p.aiThermal, on -> p.aiThermal = on));
+        ai.addView(stepper("Heat guard: rest at", () -> Math.round(p.aiPauseC) + " °C", d -> { p.aiPauseC = Math.max(38, Math.min(52, p.aiPauseC + d)); p.aiResumeC = p.aiPauseC - 6; p.aiThrottleC = p.aiPauseC - 4; }));
+        ai.addView(toggle("Learn the best pattern (tries " + p.aiPatterns.replace(",", ", ") + "; keeps the fastest bag fill)", p.aiPatternLearn, on -> p.aiPatternLearn = on));
+        ai.addView(tv("Heat: " + AiPower.why, 12, DIM));
     }
 
     // ------------------------------------------------------------------ Settings
@@ -730,16 +734,15 @@ public class MainActivity extends Activity {
         into.addView(whState);
     }
 
-    /** Screen capture consent (Home step 3 and the setup wizard). */
+    /** Screen reading (Home step 3 and the setup wizard). No MediaProjection consent: frames come from the key sender
+     *  (FrameServer, shell user via Shizuku), which this starts if it isn't running. */
     void requestCapture() {
             if (CaptureService.inst == null) {
-                MediaProjectionManager mpm = getSystemService(MediaProjectionManager.class);
-                // Android 14+ offers "A single app" first: the macro then sees a black screen ("dark", HUD not recognized). Ask for the whole screen.
-                startActivityForResult(android.os.Build.VERSION.SDK_INT >= 34
-                        ? mpm.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay())
-                        : mpm.createScreenCaptureIntent(), 7);
+                startForegroundService(new Intent(this, CaptureService.class));
+                new Thread(() -> { if (!Keys.connect(this, false) && ShizukuKeys.ready()) Log.add("capture: starting the key sender for screen frames: " + ShizukuKeys.start(this)); }, "frames-start").start();
+                toast("Screen reading on (through the key sender, nothing is recorded)");
             }
-            else toast("Screen capture already running");
+            else toast("Screen reading already running");
             }
 
     void buildSettings() {
@@ -936,9 +939,6 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int req, int code, Intent data) {
         if (req == REQ_AUDIO) { if (code == RESULT_OK && data != null) importAudio(data); return; }
-        if (req == 7 && code == RESULT_OK && data != null)
-            startForegroundService(new Intent(this, CaptureService.class).putExtra("code", code).putExtra("data", data));
-        else if (req == 7) toast("Screen capture was not allowed");
     }
 
     private long emuAsked;
@@ -953,7 +953,7 @@ public class MainActivity extends Activity {
             if (SystemClock.uptimeMillis() - emuAsked > 5000) { emuAsked = SystemClock.uptimeMillis(); new Thread(() -> { if (Keys.connect(this)) Keys.emulatorState(); }, "emu-state").start(); }
         }
         line(s, input, "Accessibility service (floating panel and menu taps)");
-        line(s, cap, "Screen capture (MediaProjection)");
+        line(s, cap, "Screen reading (key sender frames, no recording — " + ShellFrames.status + ")");
         line(s, p.hiveConfirmed, "Hive slot " + p.hiveSlot + (p.hiveConfirmed ? " confirmed" : " — confirm it once (Hive tab)"));
         boolean panel = input && MacroService.inst.overlayShown();
         line(s, panel, panel ? "Floating panel on screen (Start, Stop, emergency stop)"

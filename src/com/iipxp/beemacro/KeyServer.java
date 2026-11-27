@@ -50,6 +50,7 @@ public final class KeyServer {
         // after 2 s with "started, but no answer yet" (Discord, 2026-11-22). Until it's done, "st" answers "starting".
         ServerSocket ss = new ServerSocket(PORT, 2, InetAddress.getByName("127.0.0.1"));
         new Thread(KeyServer::startVirtualDevice, "virtual-device").start();
+        FrameServer.start();   // screen frames for the app on PORT + 1 (replaces MediaProjection)
         System.out.println("beemacro keyserver ready on 127.0.0.1:" + PORT);
         while (true) {
             Socket s = ss.accept();

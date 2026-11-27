@@ -6,39 +6,22 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
-import android.graphics.PixelFormat;
-import android.graphics.Point;
-import android.hardware.display.DisplayManager;
-import android.hardware.display.VirtualDisplay;
-import android.media.Image;
-import android.media.ImageReader;
-import android.media.projection.MediaProjection;
-import android.media.projection.MediaProjectionManager;
-import android.os.Handler;
-import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.SystemClock;
-import android.view.WindowManager;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.IntBuffer;
-
-/** MediaProjection screen capture (user consent required by Android). Keeps the latest frame as ARGB ints. */
+/**
+ * Screen reading WITHOUT MediaProjection: frames come from the key sender's shell process ({@link FrameServer},
+ * started with the key sender through Shizuku). No consent dialog, no cast icon, nothing recorded or saved.
+ * Keeps the same API as before (inst, Frame, grab(), stopCapture) so the rest of the app is unchanged.
+ */
 public class CaptureService extends Service {
     public static volatile CaptureService inst;
-    /** Android said the shared content is out of sight (only happens when a single app was shared, not the screen). */
+    /** Only meaningful for MediaProjection's "single app" sharing; the shell mirror always sees the whole screen. */
     public static volatile boolean contentHidden;
     public static final class Frame { public int[] px; public int w, h; public long time; }
 
-    private MediaProjection mp;
-    private VirtualDisplay vd;
-    private ImageReader reader;
-    private HandlerThread thread;
-    private Handler handler;
     private final Frame frame = new Frame();
-    private int[] row;
-    private int vw, vh;
+    private long lastFix, failSince;
 
     @Override public IBinder onBind(Intent i) { return null; }
 
@@ -46,87 +29,44 @@ public class CaptureService extends Service {
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel("cap", "Screen recognition", NotificationManager.IMPORTANCE_LOW));
         Notification n = new Notification.Builder(this, "cap").setSmallIcon(R.drawable.ic_launcher)
-                .setContentTitle("Silly Macro is watching the screen").setContentText("Pine Tree Forest recognition active").setOngoing(true).build();
-        if (android.os.Build.VERSION.SDK_INT >= 29) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
-        else startForeground(1, n);   // Android 9: no service types
-        if (mp != null || intent == null) return START_NOT_STICKY;
-        try {
-            mp = getSystemService(MediaProjectionManager.class).getMediaProjection(intent.getIntExtra("code", 0), (Intent) intent.getParcelableExtra("data"));
-        } catch (Exception e) { Log.add("capture: projection failed " + e); stopSelf(); return START_NOT_STICKY; }
-        if (mp == null) { stopSelf(); return START_NOT_STICKY; }
-        thread = new HandlerThread("capture"); thread.start(); handler = new Handler(thread.getLooper());
+                .setContentTitle("Silly Macro is reading the screen").setContentText("On this phone only, through the key sender (no recording)").setOngoing(true).build();
+        if (android.os.Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        else startForeground(1, n);
+        if (inst != null) return START_NOT_STICKY;
         contentHidden = false;
-        mp.registerCallback(new MediaProjection.Callback() {
-            @Override public void onStop() { Log.add("capture: projection stopped by system/user"); stopSelf(); }
-            // Android 14+: only called when ONE app is shared ("A single app"); that app out of sight = black frames
-            @Override public void onCapturedContentVisibilityChanged(boolean visible) { contentHidden = !visible; Log.add("capture: shared app " + (visible ? "visible" : "hidden - frames are black")); }
-            @Override public void onCapturedContentResize(int w, int h) { Log.add("capture: shared content " + w + "x" + h); }
-        }, handler);
-        Point s = size();
-        vw = s.x; vh = s.y;
-        reader = ImageReader.newInstance(vw, vh, PixelFormat.RGBA_8888, 2);
-        vd = mp.createVirtualDisplay("beemacro", vw, vh, getResources().getDisplayMetrics().densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader.getSurface(), null, handler);
         inst = this;
         Monitor.start(this);
-        Log.add("capture: started " + vw + "x" + vh);
+        Log.add("capture: started (shell frames, no MediaProjection)");
         return START_NOT_STICKY;
     }
 
-    /** Ends sharing: pauses the macro (onDestroy), releases the projection and removes the notification. */
+    /** Stops screen reading: pauses the macro (onDestroy) and removes the notification. */
     public static void stopCapture(android.content.Context c) {
         Log.add("capture: stopped by user");
         c.stopService(new Intent(c, CaptureService.class));
     }
 
-    Point size() { Point p = new Point(); getSystemService(WindowManager.class).getDefaultDisplay().getRealSize(p); return p; }
-
-    /** Latest frame (cached if the screen has not changed). Follows rotation by resizing the virtual display. */
+    /** Latest frame, or null (the key sender isn't running yet: it is started through Shizuku when possible). */
     public synchronized Frame grab() {
-        if (vd == null) return null;
-        Point s = size();
-        if (s.x != vw || s.y != vh) {
-            vw = s.x; vh = s.y;
-            ImageReader old = reader;
-            reader = ImageReader.newInstance(vw, vh, PixelFormat.RGBA_8888, 2);
-            vd.resize(vw, vh, getResources().getDisplayMetrics().densityDpi);
-            vd.setSurface(reader.getSurface());
-            old.close();
-            frame.px = null;
-            SystemClock.sleep(150);
+        if (ShellFrames.connect(this) && ShellFrames.grab(frame, 0)) { failSince = 0; return frame; }
+        long now = SystemClock.elapsedRealtime();
+        if (failSince == 0) failSince = now;
+        // The frame sender lives in the key sender: start it, or restart an older one that has no frames (protocol < 6)
+        if (now - lastFix > 30_000 && now - failSince > 2000) {
+            lastFix = now;
+            boolean up = Keys.connect(this);
+            if (up) Keys.emulatorState();
+            if (up && Keys.senderProto < 6 && ShizukuKeys.ready()) Log.add("capture: key sender is too old for screen frames, restarting it: " + ShizukuKeys.start(this));
+            else if (!up) Log.add("capture: no frames (" + ShellFrames.status + ", keys " + Keys.status + ")");
         }
-        Image img = null;
-        try { img = reader.acquireLatestImage(); } catch (Exception ignored) { }
-        if (img != null) {
-            try {
-                Image.Plane pl = img.getPlanes()[0];
-                int w = img.getWidth(), h = img.getHeight(), stride = pl.getRowStride() / 4;
-                if (frame.px == null || frame.px.length != w * h) frame.px = new int[w * h];
-                IntBuffer ib = pl.getBuffer().order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
-                int[] o = frame.px;
-                if (stride == w && ib.remaining() >= w * h) {          // no row padding: one bulk copy, swap in place
-                    ib.get(o, 0, w * h);
-                    for (int i = 0; i < o.length; i++) { int c = o[i]; o[i] = 0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF); }
-                } else {
-                    if (row == null || row.length != stride) row = new int[stride];
-                    for (int y = 0; y < h; y++) {
-                        ib.position(y * stride); ib.get(row, 0, Math.min(stride, ib.remaining()));
-                        for (int x = 0; x < w; x++) { int c = row[x]; o[y * w + x] = 0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF); }
-                    }
-                }
-                frame.w = w; frame.h = h; frame.time = SystemClock.uptimeMillis();
-            } finally { img.close(); }
-        }
-        return frame.px == null ? null : frame;
+        return null;
     }
 
     @Override public void onDestroy() {
         inst = null;
         Monitor.stop();
-        if (Engine.inst != null && !Engine.inst.finished()) Engine.inst.pause("screen capture stopped");
-        try { if (vd != null) vd.release(); if (reader != null) reader.close(); if (mp != null) mp.stop(); } catch (Exception ignored) { }
-        vd = null; mp = null;
-        if (thread != null) thread.quitSafely();
+        if (Engine.inst != null && !Engine.inst.finished()) Engine.inst.pause("screen reading stopped");
+        ShellFrames.close();
         super.onDestroy();
     }
 }
