@@ -98,6 +98,10 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        // Tablets (smallest width 600 dp+) open in landscape, the way Bee Swarm is played; phones stay portrait. Honoured on
+        // Android 16 large screens thanks to PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY in the manifest.
+        setRequestedOrientation(getResources().getConfiguration().smallestScreenWidthDp >= 600
+                ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         // a crash on an untested phone (Huawei: "grey screen then it kicks me off") leaves crash.txt; the next open shows it
         // with a Share button instead of crashing in the same spot again, then the open after that tries normally
         java.io.File crash = new java.io.File(getFilesDir(), "crash.txt");
