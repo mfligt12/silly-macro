@@ -1,6 +1,5 @@
 import com.iipxp.beemacro.AiBandit;
 import com.iipxp.beemacro.AiBrain;
-import com.iipxp.beemacro.AiPower;
 import com.iipxp.beemacro.FrameWire;
 
 import java.io.File;
@@ -43,16 +42,6 @@ public class AiSelfTest {
         check(again.pickPattern("pinetree", java.util.Collections.<String>emptyList(), 0f) == null, "empty shortlist keeps the app's pattern");
         check(again.summary("pinetree", Arrays.asList("Snake", "e_lol")).contains("e_lol: 16.00%/min"), "summary shows the learned rate");
 
-        // --- heat governor with hysteresis
-        check(AiPower.classify(35, 0, false, 41, 45, 39) == AiPower.Level.NORMAL, "cool phone is normal");
-        check(AiPower.classify(42, 0, false, 41, 45, 39) == AiPower.Level.THROTTLED, "warm phone throttles");
-        check(AiPower.classify(30, 2, false, 41, 45, 39) == AiPower.Level.THROTTLED, "thermal MODERATE throttles");
-        check(AiPower.classify(46, 0, false, 41, 45, 39) == AiPower.Level.HOT, "hot phone rests");
-        check(AiPower.classify(30, 3, false, 41, 45, 39) == AiPower.Level.HOT, "thermal SEVERE rests");
-        check(AiPower.classify(42, 0, true, 41, 45, 39) == AiPower.Level.HOT, "stays resting until it cools (hysteresis)");
-        check(AiPower.classify(38, 0, true, 41, 45, 39) == AiPower.Level.NORMAL, "cooled down: back to normal");
-        check(AiPower.classify(-1, -1, false, 41, 45, 39) == AiPower.Level.NORMAL, "no sensors: normal");
-        check(AiPower.periodFactor(AiPower.Level.THROTTLED) > 1f && AiPower.periodFactor(AiPower.Level.NORMAL) == 1f, "throttle slows the vision loop");
 
         // --- screencap raw output (12- and 16-byte headers)
         for (int hdr : new int[]{12, 16}) {

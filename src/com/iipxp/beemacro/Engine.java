@@ -224,7 +224,6 @@ final class Engine implements Runnable {
         stats.fieldExits = fieldOuts;
         Stats.saveCurrent(in, stats);
         afterTripRest();
-        aiCoolDown();
     }
     /** The timed Discord report (Settings → Discord → Send it every N min), like Natro's hourly one. Checked after
      *  every trip and every farming step, so a short interval isn't held back by a long trip. */
@@ -1709,22 +1708,6 @@ final class Engine implements Runnable {
         else Log.add(String.format(Locale.US, "ai: %s scored %.2f%% bag/min on %s%s", pick, rw, p.field, b.summary(p.field, aiCandidates)));
     }
 
-    /** Too hot (AiPower): wait where we are until the phone cools, at most 15 min, then carry on regardless. */
-    private void aiCoolDown() {
-        if (AiPower.level != AiPower.Level.HOT) return;
-        String ph = phase; phase = "Cooling down";
-        decide("Cooling down", "The phone is too hot: resting until it cools before the next trip.", AiPower.why, "carry on farming", 1);
-        Log.add("ai power: cooling down (" + AiPower.why + ")");
-        hook("problem", "🌡 Cooling down", AiPower.why, Webhook.GOLD, false);
-        in.emergencyRelease(); in.arm();
-        long end = SystemClock.uptimeMillis() + 15 * 60_000L;
-        while (AiSensors.update(in, p) == AiPower.Level.HOT && SystemClock.uptimeMillis() < end) {
-            sleep(15_000);
-            if (p.keyboard() && Keys.connect(in)) Keys.nudge();   // counts as input: no idle kick / screen lock while resting
-        }
-        Log.add("ai power: " + (AiPower.level == AiPower.Level.HOT ? "still hot after 15 min, carrying on" : "cooled down (" + AiPower.why + ")"));
-        phase = ph;
-    }
     /** "AI Tokens" pattern: token collection is always on, wider reach, several tokens per step (Patterns.AI). */
     private boolean aiTokens;
     private List<Moves.Step> farmPattern() {
@@ -2008,12 +1991,6 @@ final class Engine implements Runnable {
                 guardBag(r);
                 rate(r);
                 checkLost();
-                if (AiPower.level == AiPower.Level.HOT) {   // AiPower: end the trip early; afterTrip() rests until it cools
-                    Log.add("ai power: too hot (" + AiPower.why + "), ending this trip early");
-                    in.emergencyRelease(); in.arm();
-                    if (i < sk.size() - 1) unwindCamera(sk, i);
-                    return;
-                }
                 if (s.type == 'W' && !(r != null && bagKnown(r) && r.pollen >= p.backpackThreshold)) {
                     if (aiTokens) { for (int k = 0; k < 4 && maybeCollect(); k++) { } }   // AI Tokens: token to token, up to 4 per step
                     else maybeCollect();

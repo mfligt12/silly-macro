@@ -242,7 +242,6 @@ final class Monitor {
                 }
                 boolean busy = Engine.inst != null && !Engine.inst.finished();
                 long period = busy ? 1000 / Math.max(1, p.detectFps) : p.batterySaver ? 1000 : 300;
-                period = (long) (period * AiPower.periodFactor(AiSensors.update(c, p)));   // warm phone: look less often
                 SystemClock.sleep(Math.max(10, period - (now - t0)));
             }
         }, "vision");

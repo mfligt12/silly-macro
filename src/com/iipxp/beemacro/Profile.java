@@ -219,14 +219,14 @@ public final class Profile {
     public boolean overlayExpanded = false, overlayVisible = true, overlayMinimized = false;
     public boolean batterySaver = true, debug = false, stats = true;
 
-    // AI (AiBrain / AiPower). Pattern learning: before each trip pick from this shortlist of Natro patterns, score it by
-    // bag % per minute, remember it across runs. Heat guard: slow vision when warm, cool down at the hive when hot.
-    public boolean aiPatternLearn = false, aiThermal = true;
+    // AI (AiBrain). Pattern learning: before each trip pick from this shortlist of Natro patterns, score it by
+    // bag % per minute, remember it across runs.
+    public boolean aiPatternLearn = false;
     /** Never pause by itself (keyboard mode): its own pauses become retry / reset / rejoin, like overnight. Your Pause
      *  button, the low-battery stop and setup questions at Start still pause. */
     public boolean noAutoPause = true;
     public String aiPatterns = "Snake,e_lol,Squares,Lines";
-    public float aiExplore = 0.15f, aiThrottleC = 41f, aiPauseC = 45f, aiResumeC = 39f;
+    public float aiExplore = 0.15f;
 
     public static File file(File dir) { return new File(dir, NAME + ".properties"); }
 

@@ -24,12 +24,9 @@
   - After a normal trip, the pattern is scored in bag % per minute. Trips under a minute, an unreadable bag, or a falling bag % aren't scored.
   - The scores are stored in `files/ai_brain.properties`.
   - Engine reads the pattern through `pat()` instead of `p.pattern`, so the saved setting is never overwritten.
-- **`AiPower.java`** is the heat governor: NORMAL / THROTTLED / HOT, with hysteresis. **`AiSensors.java`** feeds it battery temperature and the thermal status.
-  - Monitor runs vision 2.5× slower while the phone is warm.
-  - When the phone is HOT, `farmLoop` ends the trip early and `afterTrip()` rests in an `aiCoolDown()` phase. The rest lasts at most 15 min, and it sends a Scroll Lock nudge so the game doesn't treat the player as idle.
-- **New Profile fields:** `aiPatternLearn`, `aiThermal`, `aiPatterns`, `aiExplore`, `aiThrottleC`, `aiPauseC`, `aiResumeC`.
+- **New Profile fields:** `aiPatternLearn`, `aiPatterns`, `aiExplore`, `noAutoPause`.
 - **New settings card:** Performance → "AI".
-- **`test/AiSelfTest.java`** (23 checks) runs in step 1 of `build.ps1`.
+- **`test/AiSelfTest.java`** (14 checks) runs in step 1 of `build.ps1`.
 
 ## Not verified on a device
-The project builds with `build.ps1` and the self-tests pass. FrameServer's hidden-API mirror paths haven't been run on a phone yet. Check the key sender's log for the `frames:` lines on the first run.
+Screen reading through FrameServer has now run on a Galaxy S23 (Android 17) at about 8 fps. The heat guard (AiPower / AiSensors) was taken out again on request.
