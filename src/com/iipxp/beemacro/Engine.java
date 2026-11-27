@@ -1848,27 +1848,73 @@ final class Engine implements Runnable {
     private void cornerAlign(boolean first) {
         Moves.Key kx = (Moves.Key) corner[0], ky = (Moves.Key) corner[1];
         String was = phase; phase = "Lining up in the corner";
-        long a = wallWalk(ky), b = wallWalk(kx);
-        if (first || a < 0 || b < 0) Log.add("corner: walls " + (a < 0 ? "not reached" : "at " + a + " ms") + " / " + (b < 0 ? "not reached" : "at " + b + " ms"));
-        walkHold(new Moves.Step('H', new Moves.Key[]{Moves.flip(ky)}, 1.0, (int) Moves.tileMs((double) corner[3], p.moveSpeed), null));
-        walkHold(new Moves.Step('H', new Moves.Key[]{Moves.flip(kx)}, 1.0, (int) Moves.tileMs((double) corner[2], p.moveSpeed), null));
+        long[] a = wallWalk(ky), b = wallWalk(kx);
+        if (first || a[0] != WALL || b[0] != WALL) Log.add("corner: " + ky + " " + wallWhy(a) + " / " + kx + " " + wallWhy(b));
+        stepOut(ky, a, (double) corner[3]);
+        stepOut(kx, b, (double) corner[2]);
         checkpoint();
         phase = was; Monitor.fieldTrack.clear();
         if (first) { placeSprinkler(false, new Moves.Key[]{Moves.flip(ky), Moves.flip(kx)}); Monitor.fieldTrack.clear(); }   // the sprinkler sits where the pattern starts
     }
-    /** Hold one key until the character stands still against a wall (ms walked), or -1 if no wall within ~30 tiles.
-     *  Never jumps: a jump at the hedge is what climbed it. */
-    private long wallWalk(Moves.Key k) {
-        long t0 = SystemClock.uptimeMillis(); final long[] still = {0};
-        boolean hit = in.holdUntil(MacroService.set(new Moves.Key[]{k}), Moves.tileMs(30, p.moveSpeed), () -> {
+    /** wallWalk results: {how, ms walked}. */
+    static final long NOT_REACHED = 0, WALL = 1, EDGE = 2, LEFT_FIELD = 3;
+    private static String wallWhy(long[] w) {
+        return (w[0] == WALL ? "wall" : w[0] == EDGE ? "field edge (no hedge)" : w[0] == LEFT_FIELD ? "LEFT THE FIELD, stepped back in" : "nothing within the field's length") + " at " + w[1] + " ms";
+    }
+    /** How far a wall can be along this key, in tiles: the whole field along that axis (Natro's field size) + 2.
+     *  The camera may be turned a quarter (fieldRotate), then the view's W/S runs along the field's width. */
+    private double fieldSpan(Moves.Key k) {
+        double[] t = Routes.sprinklerTiles(p.field, 10);   // field entry (middle) to its edge: {forward/back, left/right}
+        boolean viewFB = k == Moves.Key.W || k == Moves.Key.S;
+        boolean quarter = Math.floorMod(p.fieldRotate / 2, 4) % 2 == 1;
+        return 2 * (viewFB != quarter ? t[0] : t[1]) + 2;
+    }
+    /** Hold one key until the character stands still against a wall. Where that side has no hedge, it stops at the
+     *  field's edge (field map) or as soon as it is outside the field, and steps back in. It never walks further than
+     *  the field is long: it used to hold for 30 tiles, left the field on an open side and lined up on some other
+     *  wall outside it ("Lining up in the corner" -> walks into a wall not even in the field). Never jumps: a jump at
+     *  the hedge is what climbed it. Returns {NOT_REACHED/WALL/EDGE/LEFT_FIELD, ms walked}. */
+    private long[] wallWalk(Moves.Key k) {
+        final long t0 = SystemClock.uptimeMillis(); final long[] still = {0}, outSince = {0}; final long[] why = {NOT_REACHED};
+        // the field map reads blue/white fields; under Pine Tree's leaves the shade reads as an edge, so no edge stop there
+        final boolean map = fieldOn(), edges = map && !p.field.equals("pinetree");
+        double span = fieldSpan(k);
+        in.holdUntil(MacroService.set(new Moves.Key[]{k}), Moves.tileMs(span, p.moveSpeed), () -> {
             long now = SystemClock.uptimeMillis();
-            if (now - t0 < 700 || now - Monitor.motionTime > 1500) return false;
+            if (now - t0 < 700) return false;
+            FieldMap.Read r = Monitor.fieldRead;
+            if (map && r != null) {
+                if (r.state == FieldMap.State.OUTSIDE || r.wrongField) { if (outSince[0] == 0) outSince[0] = now; if (now - outSince[0] > 600) { why[0] = LEFT_FIELD; return true; } }
+                else outSince[0] = 0;
+                if (edges && r.state == FieldMap.State.INSIDE) {
+                    int edge = k == Moves.Key.W ? r.up : k == Moves.Key.S ? r.down : k == Moves.Key.A ? r.left : r.right;
+                    if (edge <= p.fieldMargin) { why[0] = EDGE; return true; }
+                }
+            }
+            if (now - Monitor.motionTime > 1500) return false;
             if (Monitor.motion >= STILL) { still[0] = 0; return false; }
             if (still[0] == 0) still[0] = now;
-            return now - still[0] > 450;
+            if (now - still[0] > 450) { why[0] = WALL; return true; }
+            return false;
         });
+        long ms = SystemClock.uptimeMillis() - t0;
         checkpoint();
-        return hit ? SystemClock.uptimeMillis() - t0 : -1;
+        if (why[0] == LEFT_FIELD) {   // back over the edge we just crossed
+            walkHold(new Moves.Step('H', new Moves.Key[]{Moves.flip(k)}, 1.0, (int) Moves.tileMs(1.5, p.moveSpeed), null));
+            Monitor.fieldTrack.clear();
+        }
+        return new long[]{why[0], ms};
+    }
+    /** From the wall (or edge) step out to the pattern's start. If neither was found within the field's length the
+     *  character is probably past the field: walk back half that length instead of stepping out from out there. */
+    private void stepOut(Moves.Key towards, long[] w, double tiles) {
+        if (w[0] == NOT_REACHED) {
+            Log.add("corner: no wall or edge towards " + towards + " within the field's length, walking back to the middle");
+            walkHold(new Moves.Step('H', new Moves.Key[]{Moves.flip(towards)}, 1.0, (int) (w[1] / 2), null));
+            return;
+        }
+        double back = w[0] == LEFT_FIELD ? Math.max(0, tiles - 1.5) : tiles;   // already stepped 1.5 tiles back in
+        if (back > 0.05) walkHold(new Moves.Step('H', new Moves.Key[]{Moves.flip(towards)}, 1.0, (int) Moves.tileMs(back, p.moveSpeed), null));
     }
     private void farmLoop(List<Moves.Step> sk) {
         Vision.Result r0 = waitFor(this::bagKnown, 4000);
