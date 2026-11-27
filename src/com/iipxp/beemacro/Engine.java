@@ -158,10 +158,12 @@ final class Engine implements Runnable {
         lastHourly = SystemClock.uptimeMillis();
         hook("session", "▶ Macro started", Routes.name(p.field) + " · " + p.pattern + "\nHive slot " + p.hiveSlot + " · bag limit " + p.backpackThreshold + "% · " + p.fieldMinutes + " min"
                 + (Monitor.honey > 0 ? "\nHoney: " + Stats.big(Monitor.honey) : ""), Webhook.PURPLE, true);
+        if (p.fieldTour) tourStart();
         try {
             while (true) {
-                try { cycle(); recoveries = 0; afterTrip(); }
+                try { cycle(); recoveries = 0; tourTripDone(null); afterTrip(); }
                 catch (Recover r) {
+                    tourTripDone(r.getMessage());
                     stats.navFailures++; recoveries++;
                     if (phase.equals("Farming")) stats.patternRestarts++;
                     in.emergencyRelease();
@@ -189,6 +191,7 @@ final class Engine implements Runnable {
         } finally {
             in.emergencyRelease();
             if (p.hiveSlot != userSlot) { p.hiveSlot = userSlot; App.save(in); }
+            tourEnd();
             noHudNow = false;
             stats.finish(reason.isEmpty() ? "stopped" : reason);
             Stats.save(in, stats);
@@ -210,6 +213,55 @@ final class Engine implements Runnable {
     /** Nobody should have to press Resume: overnight, or "Never pause by itself" (on by default, keyboard mode).
      *  The macro retries, resets or rejoins instead of pausing. */
     private boolean unattended() { return night() || (p.keyboard() && p.noAutoPause); }
+
+    // ------------------------------------------------------------------ field tour (test mode, Profile.fieldTour)
+    // Visits every field in Routes.FIELDS order with Natro's recommended pattern for it (Profile.fieldDefaults), farms
+    // tourMinutes, walks home on foot (walk paths, never the cannon), converts, and moves on. A field gets 2 tries; one
+    // "tour: RESULT" log line per field. Your own field/pattern are put back when the tour ends or is stopped.
+    private String[] tourSaved; private int tourLeft, tourTries; private final java.util.List<String> tourIssues = new java.util.ArrayList<>();
+    private final StringBuilder tourReport = new StringBuilder();
+    private boolean touring() { return tourSaved != null; }
+    private void tourStart() {
+        tourSaved = new String[]{p.field, p.pattern, p.patternSize, String.valueOf(p.patternWidth)};
+        tourLeft = Routes.FIELDS.length; tourTries = 0; tourIssues.clear(); tourReport.setLength(0);
+        p.fieldDefaults(); App.save(in);
+        Log.add("tour: START — " + tourLeft + " fields, " + p.tourMinutes + " min each, Natro's pattern per field, walk paths only");
+        tourAnnounce();
+    }
+    private void tourAnnounce() {
+        Log.add("tour: FIELD " + (Routes.FIELDS.length - tourLeft + 1) + "/" + Routes.FIELDS.length + " " + Routes.name(p.field)
+                + " — " + p.pattern + " " + p.patternSize + " ×" + p.patternWidth);
+        decide("Field tour", "Testing " + Routes.name(p.field) + " with Natro's pattern " + p.pattern + ".", "tour field " + (Routes.FIELDS.length - tourLeft + 1) + "/" + Routes.FIELDS.length, "farm " + p.tourMinutes + " min, convert, next field", 1);
+    }
+    /** After each trip (problem = the Recover message, null when the trip went through). */
+    private void tourTripDone(String problem) {
+        if (!touring()) return;
+        tourTries++;
+        if (problem != null) tourIssues.add(problem);
+        if (problem != null && tourTries < 2) { Log.add("tour: " + Routes.name(p.field) + " try " + tourTries + " failed (" + problem + "), trying it once more"); return; }
+        String line = String.format(Locale.US, "%s · %s %s ×%d · %s", Routes.name(p.field), p.pattern, p.patternSize, p.patternWidth,
+                problem == null ? (tourIssues.isEmpty() ? "OK" : "OK after: " + String.join(" | ", tourIssues)) : "FAILED: " + String.join(" | ", tourIssues));
+        Log.add("tour: RESULT " + line);
+        tourReport.append("\n").append(line);
+        tourLeft--;
+        if (tourLeft <= 0) {
+            Log.add("tour: DONE —" + tourReport.toString().replace("\n", "\n  "));
+            hook("session", "🧭 Field tour finished", tourReport.toString(), Webhook.CYAN, false);
+            stop("Field tour finished"); throw new Stopped();
+        }
+        int i = Routes.index(p.field);
+        p.field = Routes.FIELDS[(i + 1) % Routes.FIELDS.length][0]; p.fieldDefaults(); App.save(in);
+        tourTries = 0; tourIssues.clear(); recoveries = 0;
+        tourAnnounce();
+    }
+    private void tourEnd() {
+        if (!touring()) return;
+        p.field = tourSaved[0]; p.pattern = tourSaved[1]; p.patternSize = tourSaved[2]; p.patternWidth = Integer.parseInt(tourSaved[3]);
+        p.fieldTour = false; App.save(in);
+        if (tourReport.length() > 0) Log.add("tour: report so far —" + tourReport.toString().replace("\n", "\n  "));
+        Log.add("tour: ended, your field and pattern are back (" + p.field + " — " + p.pattern + ")");
+        tourSaved = null;
+    }
 
     /** After every trip: honey stats, the running report, and the battery check. */
     private long lastHourly;
@@ -986,7 +1038,7 @@ final class Engine implements Runnable {
         walkField(m.x, m.y, m.ms);
     }
 
-    private long wrongSince; private int wrongSeen; private long wrongSample;
+    private long wrongSince; private int wrongSeen; private long wrongSample, wrongVetoLog;
     /** While farming: another field all around for 8 s (pollen rises there too, so that is no excuse), or no pollen
      *  at all for 60 s (stuck somewhere) = reset and start the trip over. */
     private void checkLost() {
@@ -1002,6 +1054,13 @@ final class Engine implements Runnable {
             wrongSample = now;
             if (r.wrongField) { if (wrongSince == 0) wrongSince = now; wrongSeen++; }
             else if (r.state == FieldMap.State.INSIDE && r.fieldCells >= 40) { wrongSince = 0; wrongSeen = 0; }
+            // The game's own message wins: "+N Honey (from Pine Tree Forest)" in the last 20 s = we ARE in Pine Tree. Red-hive
+            // flame tokens, red bees and particles read as "red flowers all around" and reset two good trips in a row
+            // (recorded on the Tab S9 FE, 2026-11-27 01:13 and 01:18, message on screen both times).
+            if (wrongSince > 0 && p.field.equals("pinetree") && Monitor.msgPine > 0 && now - Monitor.msgPine < 20_000) {
+                if (now - wrongVetoLog > 60_000) { wrongVetoLog = now; Log.add("field: red all around, but the game says Pine Tree Forest - staying (red effects, not a field)"); }
+                wrongSince = 0; wrongSeen = 0;
+            }
             if (wrongSince > 0 && now - wrongSince > 8000 && wrongSeen >= 8) {
                 saveGuardFrame("wrongfield"); stats.fieldExits++;
                 wrongSince = 0; wrongSeen = 0;
@@ -2064,6 +2123,7 @@ final class Engine implements Runnable {
                 if (r != null) nav = String.format(Locale.US, "Pine Tree Forest (pollen %.1f%% → %.1f%%)", startPct, r.pollen);
             }
             long inField = SystemClock.uptimeMillis() - t0;
+            if (touring() && inField > p.tourMinutes * 60_000L) { Log.add("tour: " + p.tourMinutes + " min farmed on " + Routes.name(p.field) + ", heading home"); return; }
             if (inField > p.fieldMinutes * 60_000L) {
                 // A big bag never reaches the threshold in fieldMinutes: every trip then ended on the timer and paid ~80 s
                 // of travel for a few % (recorded: 115M bag, +26k/s). Stay while the bag is under half full, up to

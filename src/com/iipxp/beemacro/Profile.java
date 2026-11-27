@@ -230,6 +230,10 @@ public final class Profile {
     public int cornerEvery = 4;               // corner mode: line up on loop 1, then every N loops (or when pollen stalls)
     public boolean fieldExtend = true;        // at the field time limit, stay while the bag is under half full...
     public int fieldMaxMinutes = 30;          // ...up to this long per trip
+    /** Field tour (test mode): every field with Natro's pattern for it, tourMinutes each, walk paths only, a RESULT log
+     *  line per field. Switches itself off and puts your field/pattern back when the tour ends or is stopped. */
+    public boolean fieldTour = false;
+    public int tourMinutes = 2;
     public boolean respawnByClick = false;    // learned: R isn't a Respawn shortcut in this Roblox menu, click it directly
     public boolean confirmByClick = false;    // learned: Enter doesn't confirm the respawn dialog, click it directly
     public String aiPatterns = "Snake,e_lol,Squares,Lines";
