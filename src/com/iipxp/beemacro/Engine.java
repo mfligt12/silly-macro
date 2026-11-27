@@ -1935,7 +1935,9 @@ final class Engine implements Runnable {
      *  wall outside it ("Lining up in the corner" -> walks into a wall not even in the field). Never jumps: a jump at
      *  the hedge is what climbed it. Returns {NOT_REACHED/WALL/EDGE/LEFT_FIELD, ms walked}. */
     private long[] wallWalk(Moves.Key k) {
-        final long t0 = SystemClock.uptimeMillis(); final long[] still = {0}, outSince = {0}; final long[] why = {NOT_REACHED};
+        final long t0 = SystemClock.uptimeMillis(); final long[] still = {0}, outSince = {0}, leftAt = {t0}; final long[] why = {NOT_REACHED};
+        // the pollen counter was rising just before (so "stopped rising" means something here; a full bag never rises)
+        final boolean pollenLive = t0 - Monitor.pollenChanged < 1500;
         // the field map reads blue/white fields; under Pine Tree's leaves the shade reads as an edge, so no edge stop there
         final boolean map = fieldOn(), edges = map && !p.field.equals("pinetree");
         double span = fieldSpan(k);
@@ -1955,6 +1957,9 @@ final class Engine implements Runnable {
                     if (edge <= p.fieldMargin) { why[0] = EDGE; return true; }
                 }
             }
+            // Any field (red ones too, where there is no field map): pollen stops coming in once we step off the flowers.
+            // Recorded on Pepper: its S side has gaps between the giant peppers and the walk went out onto the grass.
+            if (pollenLive && now - t0 > 1200 && now - Monitor.pollenChanged > 1100) { leftAt[0] = Monitor.pollenChanged; why[0] = LEFT_FIELD; return true; }
             if (now - Monitor.motionTime > 1500) return false;
             if (Monitor.motion >= STILL) { still[0] = 0; return false; }
             if (still[0] == 0) still[0] = now;
@@ -1965,8 +1970,9 @@ final class Engine implements Runnable {
         // time ran out while already standing still (fresh motion reading under STILL): that is the wall
         if (why[0] == NOT_REACHED && SystemClock.uptimeMillis() - Monitor.motionTime < 1500 && Monitor.motion < STILL) why[0] = WALL;
         checkpoint();
-        if (why[0] == LEFT_FIELD) {   // back over the edge we just crossed
-            walkHold(new Moves.Step('H', new Moves.Key[]{Moves.flip(k)}, 1.0, (int) Moves.tileMs(1.5, p.moveSpeed), null));
+        if (why[0] == LEFT_FIELD) {   // back over the edge we just crossed: as long as we walked since leaving, plus a bit
+            long back = Math.max(Moves.tileMs(1.5, p.moveSpeed), Math.min(3000, SystemClock.uptimeMillis() - leftAt[0] + 400));
+            walkHold(new Moves.Step('H', new Moves.Key[]{Moves.flip(k)}, 1.0, (int) back, null));
             Monitor.fieldTrack.clear();
         }
         return new long[]{why[0], ms};
@@ -2009,9 +2015,10 @@ final class Engine implements Runnable {
             // Corner mode: line up on loop 1, then every cornerEvery loops, or sooner when pollen stopped rising for 15 s
             // or we left the field since the last line-up. Every loop cost ~5 s of a 10 s loop (recorded, Pepper XS).
             if (corner != null) {
-                boolean due = loop == 1 || (loop - 1) % Math.max(1, p.cornerEvery) == 0
-                        || SystemClock.uptimeMillis() - lastRise > 15_000 || fieldOuts != alignedOuts;
-                if (due) { cornerAlign(loop == 1); alignedOuts = fieldOuts; }
+                long noPollen = SystemClock.uptimeMillis() - Math.max(lastRise, Monitor.pollenChanged);
+                String due = loop == 1 ? "start" : (loop - 1) % Math.max(1, p.cornerEvery) == 0 ? "every " + p.cornerEvery + " loops"
+                        : noPollen > 20_000 ? "no pollen for " + noPollen / 1000 + " s" : fieldOuts != alignedOuts ? "left the field" : null;
+                if (due != null) { Log.add("corner: lining up (loop " + loop + ", " + due + ")"); cornerAlign(loop == 1); alignedOuts = fieldOuts; }
             }
             // Drift by sight only where the pattern really closes: Skillet and corner mode line up on the hedges every
             // loop, so they end where the walls put them, not where they began (live: the anchor fought Skillet, 30%→44%)
